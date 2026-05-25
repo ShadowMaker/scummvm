@@ -106,7 +106,7 @@ Globals::Globals() : _sys(MAX_SYSMESS), _directions(NUMBER_OF_DIRECTIONS), _extr
 	_md5Index.setVal("84d5fbb16a37e495abf09d191fd8b1a2", 16); // perseus
 	_md5Index.setVal("afde056c152de79ea20453c42a2d08af", 18); // 10indians
 	_md5Index.setVal("6c6fbbbb50032463a6ea71c6750ea1f5", 20); // waxworks11
-	_md5Index.setVal("0eec511d3cde815c73e5464ab0cdbef9" ,22); // marveladventure
+	_md5Index.setVal("49a36d210c1cc3ceace0074fbd449d26", 22); // marveladventure
 	_md5Index.setVal("b4d8fc4eabed4f2400717303561ad0fa",  0); // misadv1
 	_md5Index.setVal("3ce5ea1a0473244bf469fd3c51f1dc48",  6); // midadv2
 	_md5Index.setVal("10109d9776b9372f9c768b53a664b113", 12); // robin of sherwood
