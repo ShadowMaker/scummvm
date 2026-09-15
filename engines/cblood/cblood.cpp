@@ -516,7 +516,7 @@ void CBloodEngine::decodeAtariLowResScreen(const byte *src, byte *dst) const {
 }
 
 void CBloodEngine::decodeAtariPalette(const byte *src, byte *dst) const {
-	static const byte stLevelToRgb[8] = { 0x00, 0x22, 0x44, 0x66, 0x88, 0xaa, 0xcc, 0xee };
+	static const byte stLevelToRgb[8] = { 0x00, 0x24, 0x49, 0x6d, 0x92, 0xb6, 0xdb, 0xff };
 
 	for (int i = 0; i < kPaletteColors; ++i) {
 		const uint16 color = READ_BE_UINT16(src + i * 2);
