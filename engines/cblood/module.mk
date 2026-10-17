@@ -3,7 +3,15 @@ MODULE := engines/cblood
 MODULE_OBJS := \
 	cblood.o \
 	metaengine.o \
-	music.o
+	game_state.o \
+	resources.o \
+	renderer.o \
+	sound.o \
+	screen_controller.o \
+	cockpit_panel.o \
+	cockpit_screen.o \
+	planet_screen.o \
+	startup_screen.o
 
 MODULE_DIRS += \
 	engines/cblood
