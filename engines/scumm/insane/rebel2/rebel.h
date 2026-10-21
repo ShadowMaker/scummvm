@@ -29,6 +29,8 @@
 #include "scumm/insane/insane.h"
 #include "scumm/insane/rebel/rebel_audio.h"
 #include "scumm/insane/rebel/rebel_gamepad.h"
+#include "scumm/insane/rebel/rebel_touch.h"
+#include "scumm/insane/rebel2/releases.h"
 
 #include "common/keyboard.h"
 #include "common/list.h"
@@ -38,6 +40,8 @@
 
 #include "audio/audiostream.h"
 #include "audio/mixer.h"
+
+#include "graphics/surface.h"
 
 namespace Audio {
 class QueuingAudioStream;
@@ -51,6 +55,8 @@ class InsaneRebel2 : public Insane, public Common::EventObserver {
 public:
 	InsaneRebel2(ScummEngine_v7 *scumm);
 	~InsaneRebel2();
+
+	const Rebel2Release _release;
 
 	bool notifyEvent(const Common::Event &event) override;
 
@@ -128,6 +134,7 @@ public:
 	bool _noDamage;
 
 	void unlockAllChapters();
+	void updateChapterUnlocks();
 	int runChapterSelect();
 	void drawChapterSelectOverlay(byte *renderBitmap, int pitch, int width, int height);
 	int processChapterSelectInput();
@@ -137,6 +144,7 @@ public:
 	int16 _previewOffsetY;
 
 	void drawChapterInfoLine(byte *renderBitmap, int pitch, int width, int height);
+	void drawPilotInfoLines(byte *renderBitmap);
 	Common::String getRankString(int rating);
 	Common::String getChapterPassword(int level, int difficulty);
 
@@ -191,17 +199,18 @@ public:
 		int16 rating[kNumLevels];
 		int16 difficulty;
 
-		void init() {
+		void init(int firstLevel = 1, int initialLives = 4) {
 			memset(name, 0, sizeof(name));
 			memset(rating, 0, sizeof(rating));
 			difficulty = 2;
-			score[0] = 0;
-			lives[0] = 4;
-			damage[0] = 0;
-			for (int i = 1; i < kNumLevels; i++) {
+			for (int i = 0; i < kNumLevels; i++) {
 				score[i] = 0;
 				lives[i] = 0xFF;
 				damage[i] = 0xFF;
+			}
+			if (firstLevel >= 1 && firstLevel <= kNumLevels) {
+				lives[firstLevel - 1] = initialLives;
+				damage[firstLevel - 1] = 0;
 			}
 		}
 	};
@@ -218,6 +227,13 @@ public:
 	void copyPilot(int srcIndex);
 
 	void updatePilotProgress(int levelIndex, int32 score, int32 lives, int32 damage, int32 rating);
+
+	// Activates a pilot and derives its unlocked chapters, as the pilot menu does.
+	bool selectPilot(int index);
+
+	// Loading a pilot drops straight into the chapter selection.
+	Common::Error loadGameState(int slot, bool startupLoad = false);
+	bool _pilotLoadRequested;
 
 	enum LevelSelectResult {
 		kLevelSelectBack = 0,
@@ -269,7 +285,9 @@ public:
 	Common::String getLevelPrefix(int levelId);
 
 	// Per-level handlers.
+	class Level1Handler;
 	int runLevel1();
+	class Level2Handler;
 	int runLevel2();
 	int runLevel3();
 	int runLevel4();
@@ -317,7 +335,7 @@ public:
 
 	int getRandomVariant(int max);
 	Common::String selectDeathVideoVariant(int levelId, int phase, int frame);
-	void playCinematic(const char *filename);
+	void playCinematic(const char *filename, int16 flags = 0x28);
 
 	// Text is progressively revealed during [fadeInFrame, fadeOutFrame)
 	void playVideoWithText(const char *filename, int textID, int textX, int textY,
@@ -360,9 +378,11 @@ public:
 	void centerGameplayAim();
 	bool _gameplaySectionActive;
 	RebelIOSGamepadControllerState _iosGamepadControllerState;
+	RebelTouchTapDetector _touchTapDetector;
 
 	int _currentPhase;
 	int _deathFrame;
+	int _rebelDeathCause;   // 0 = enemy shot, 1 = direct hit, 2 = collision; picks the death video
 	bool _skipSectionRequested;
 
 	// Resources and fonts.
@@ -375,13 +395,17 @@ public:
 	NutRenderer *_smush_povfontNut;
 
 	byte _savedPausePalette[768];
+	Graphics::Surface _savedPauseScreen;
 	bool _pauseOverlayActive;
 
 	bool _introCursorPushed;
 
 
 	int32 processMouse() override;
+	bool isTouchscreenActive() const;
+	bool isSkippableVideoState() const;
 	Common::Point getGameplayAimPoint();
+	Common::Point getGameplayPointerPos();
 	Common::Point getRebelAutoPlayAimPoint();
 	void resetMenuGamepadAxis();
 	bool handleMenuGamepadAxisEvent(const Common::Event &event);
@@ -456,7 +480,7 @@ public:
 	void renderGameplayPostFrame(byte *renderBitmap, int pitch, int width, int height,
 								 int videoWidth, int videoHeight, int statusBarY, int32 curFrame);
 	void updateGameplayDamageEffects(byte *renderBitmap, int pitch, int width, int height);
-	void updateGameplayDamageRecovery(int32 curFrame);
+	void updateGameplayTimedTick(int32 curFrame);
 	void checkGameplayPostRenderCollisions(byte *renderBitmap, int pitch, int width, int height, int32 curFrame);
 
 	void renderTurretHudOverlays(byte *renderBitmap, int pitch, int width, int height, int32 curFrame);
@@ -537,6 +561,7 @@ public:
 		int id;
 		int type;
 		Common::Rect rect;
+		int velX, velY;   // last per-frame motion, feeds the death explosion drift
 		bool active;
 		bool destroyed;
 		int explosionFrame;
@@ -548,6 +573,9 @@ public:
 
 	void initEnemyStruct(int id, int32 x, int32 y, int32 w, int32 h, bool active, bool destroyed, int32 explosionFrame, int type = 0);
 	void enemyUpdate(byte *renderBitmap, Common::SeekableReadStream &b, int16 par2, int16 par3, int16 par4);
+
+	Common::Point getTargetHitHalfExtents(const enemy &target) const;
+	bool isTargetUnderAim(const enemy &target, const Common::Point &aim) const;
 
 	Common::List<enemy> _enemies;
 
@@ -583,6 +611,7 @@ public:
 		int width, height;
 		int counter;
 		int scale;
+		int dx, dy;   // carries the victim's last motion (flight buffer space)
 		bool active;
 	};
 
@@ -592,7 +621,7 @@ public:
 	};
 
 	Explosion _explosions[5];
-	void spawnExplosion(int x, int y, int objectHalfWidth);
+	void spawnExplosion(int x, int y, int objectHalfWidth, int dx = 0, int dy = 0);
 
 	// Collision zones registered by IACT opcode 5.
 	struct CollisionZone {
@@ -639,6 +668,9 @@ public:
 	void checkHandler7RightBoundary(const CollisionZone &zone, int16 hMargin, int wallDamage);
 	void checkHandler7BoundaryZones(uint16 &warningMask);
 	void renderHandler7WarningCues(byte *renderBitmap, int pitch, int width, int height, int32 curFrame, uint16 warningMask);
+	void updateLevel7Fork(int32 curFrame);
+	void updateLevel15TypeSwitch(int32 curFrame);
+	void updateLevel9WaveReset(int32 curFrame);
 
 	int16 _playerDamage;
 	int16 _playerShield;
@@ -677,6 +709,9 @@ public:
 
 	int _rebelWaveState;
 	int _rebelPhaseState;
+	// Kills and misses banked across the phases of a level 2 style attempt.
+	int _totalKills;
+	int _totalMisses;
 
 	int _rebelAutopilot;
 	int _rebelDamageLevel;
@@ -691,20 +726,23 @@ public:
 	int _rebelViewMode1;
 	int _rebelViewMode2;
 
+	// Turret (0x26) gauge groups, addressed by value 100-109 or bitmask > 0x3ff (bit k-1 -> slot k); surfaces show while nonzero, then blink out.
 	short _rebelValueCounters[10];
-	short _rebelMaskCounters[10];
+	short _rebelGaugeBlink[10];
 	int _rebelLastCounter;
 
-	// Shield hit-point gauge: opcode-2 sets up a per-target counter; destroying a tracked
-	// target decrements it, and the looping attack run ends when it reaches 0.
-	int8 _rebelGaugeSlot[512];
+	// Turret dodge-fail view-shake impulses, ring-filtered into the scroll offset.
+	int16 _turretShakeRingX[15];
+	int16 _turretShakeRingY[15];
+
 	bool _rebelShieldGateActive;
 	bool _rebelShieldDestroyed;
 	bool _rebelReactorMode;
 	bool _rebelGaugeArmed;
 	int _rebelLastArmedSlot;
-	bool _rebelGaugeCleared[10];
+	void resetGaugeCounters();
 	void resetShieldGauge();
+	void decrementGaugeGroup(int slot, int targetId);
 
 	// Handler-specific shot state.
 	struct TurretShot {
@@ -801,6 +839,9 @@ public:
 	bool _shipFiring;
 	uint32 _prevMouseButtons;
 
+	// Rapid-fire cadence counter, re-anchored on each press.
+	int16 _rapidFireCounter;
+
 	int16 _shipDirectionIndex;
 	int16 _shipDirectionH;
 	int16 _shipDirectionV;
@@ -815,6 +856,10 @@ public:
 
 	int16 _flyShipScreenX;
 	int16 _flyShipScreenY;
+
+	// Level 7 (handler-7 flight) corridor fork: 07PLAY -> 07PLAYB right branch.
+	bool _level7ForkActive;     // armed only while 07PLAY is playing
+	bool _level7TookRightFork;  // sampled at frame 0x638: ship on the right half
 
 	int16 _smoothedVelocity;
 	int16 _verticalInput;
@@ -850,34 +895,20 @@ public:
 	int _difficulty;
 
 	// Per-level difficulty parameters.
-	struct LevelDifficultyParams {
-		int16 laserDelay;
-		int16 snapDistance;
-		int16 missDamage;
-		int16 dodgeDamage;
-		int16 shotDamage;
-		int16 specialDamage;
-		int16 shotAccuracy;
-		int16 hitPoints;
-		int16 dodgePoints;
-		int16 timePoints;
-		int16 levelPoints;
-		int16 specialPoints;
-		int16 flags;
-		int16 rollRate;
-		int16 liftRate;
-		int16 slideRate;
-		int16 driftRate;
-	};
+	typedef Rebel2DifficultyParams LevelDifficultyParams;
 
 	static const LevelDifficultyParams kDifficultyTable[6][17];
 
+	int getDifficultyRow() const;
 	LevelDifficultyParams getDifficultyParams() const;
+	int16 getWaveBudgetBase(int phase) const;
+	bool _level15SecondHalf;
 
 	void addScore(int points);
 	void renderScoreHUD(byte *renderBitmap, int pitch, int width, int height, int statusBarY);
 
 	void showPauseOverlay();
+	void hidePauseOverlay();
 
 	int _targetLockTimer;
 

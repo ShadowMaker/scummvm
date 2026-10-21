@@ -30,7 +30,6 @@ MODULE_OBJS := \
 ifdef USE_HTTP
 MODULE_OBJS += \
 	networking/http/connectionmanager.o \
-	networking/http/networkreadstream.o \
 	networking/http/httpjsonrequest.o \
 	networking/http/httprequest.o \
 	networking/http/postrequest.o \
@@ -104,7 +103,9 @@ MODULE_OBJS += \
 	fs/emscripten/emscripten-fs-factory.o \
 	fs/emscripten/emscripten-posix-fs.o \
 	fs/emscripten/http-fs.o \
-	midi/webmidi.o
+	midi/webmidi.o \
+	mixer/emscriptensdl/emscriptensdl-mixer.o \
+	timer/emscripten/emscripten-timer.o
 ifdef USE_CLOUD
 MODULE_OBJS += \
 	fs/emscripten/cloud-fs.o
@@ -354,6 +355,7 @@ MODULE_OBJS += \
 	fs/android/android-posix-fs.o \
 	fs/android/android-saf-fs.o \
 	graphics/android/android-graphics.o \
+	midi/android.o \
 	mixer/android/android-mixer.o \
 	mutex/pthread/pthread-mutex.o \
 	networking/basic/android/jni.o \
@@ -364,6 +366,11 @@ ifdef USE_HTTP
 MODULE_OBJS += \
 	networking/http/android/connectionmanager-android.o \
 	networking/http/android/networkreadstream-android.o
+endif
+
+ifdef USE_TTS
+MODULE_OBJS += \
+	text-to-speech/android/android-text-to-speech.o
 endif
 
 # Oboe headers need C++14...

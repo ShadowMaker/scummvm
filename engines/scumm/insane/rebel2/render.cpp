@@ -44,11 +44,11 @@ int getRebel2IndicatorScale(int width, int height) {
 	return (width >= 640 || height >= 400) ? 2 : 1;
 }
 
-static bool isValidEmbeddedFrame(const InsaneRebel2::EmbeddedSanFrame &frame) {
+bool isValidEmbeddedFrame(const InsaneRebel2::EmbeddedSanFrame &frame) {
 	return frame.valid && frame.pixels && frame.width > 0 && frame.height > 0;
 }
 
-static int countEmbeddedFramePixels(const InsaneRebel2::EmbeddedSanFrame &frame) {
+int countEmbeddedFramePixels(const InsaneRebel2::EmbeddedSanFrame &frame) {
 	if (!isValidEmbeddedFrame(frame))
 		return 0;
 
@@ -72,7 +72,7 @@ bool parseRebel2TextOverlayFormat(const char *&str, NutRenderer *&curFont, int &
 	return fontId == -2;
 }
 
-static Common::String getRebel2VisibleTextPrefix(const char *text, int visibleChars) {
+Common::String getRebel2VisibleTextPrefix(const char *text, int visibleChars) {
 	Common::String out;
 	if (!text || visibleChars <= 0)
 		return out;
@@ -102,7 +102,7 @@ static Common::String getRebel2VisibleTextPrefix(const char *text, int visibleCh
 	return out;
 }
 
-static const char *getRebel2LevelEndFallbackString(int id) {
+const char *getRebel2LevelEndFallbackString(int id) {
 	switch (id) {
 	case 190:
 		return "^f02^c244Chapter Complete\n^f01^c244Password: %s";
@@ -172,7 +172,7 @@ void drawHandler8PovOverlayText(const Rebel2FontSet &fontSet, byte *renderBitmap
 	drawRebel2String(fontSet, str, strlen(str), renderBitmap, clipRect, x, y, pitch, color, flags);
 }
 
-static void blitEmbeddedFrameRegion(byte *renderBitmap, int pitch, int clipWidth, int clipHeight,
+void blitEmbeddedFrameRegion(byte *renderBitmap, int pitch, int clipWidth, int clipHeight,
 		const InsaneRebel2::EmbeddedSanFrame &frame, int destX, int destY,
 		int srcX, int srcY, int drawWidth, int drawHeight) {
 	if (!renderBitmap || !isValidEmbeddedFrame(frame) || drawWidth <= 0 || drawHeight <= 0)
@@ -204,7 +204,7 @@ static void blitEmbeddedFrameRegion(byte *renderBitmap, int pitch, int clipWidth
 	}
 }
 
-static bool readEmbeddedSanChunkHeader(Common::SeekableReadStream &stream, int64 containerEnd, const char *context,
+bool readEmbeddedSanChunkHeader(Common::SeekableReadStream &stream, int64 containerEnd, const char *context,
 		uint32 &tag, uint32 &chunkSize, int64 &dataEnd, int64 &nextChunkPos) {
 	const int64 headerPos = stream.pos();
 	if (headerPos < 0 || headerPos + 8 > containerEnd)
@@ -374,6 +374,17 @@ void InsaneRebel2::loadEmbeddedSan(int userId, byte *animData, int32 size, byte 
 					}
 
 					EmbeddedSanFrame &frame = _rebelEmbeddedHud[userId];
+					// Transparent background patches update the existing scene in place.
+					if (_rebelHandler == 25 && userId == 4 && codec == SMUSH_CODEC_RLE &&
+							isValidEmbeddedFrame(frame) && left >= 0 && top >= 0 &&
+							width > 0 && height > 0 && left + width <= frame.width &&
+							top + height <= frame.height && stream.pos() < subDataEnd) {
+						smushDecodeRLE(frame.pixels, animData + stream.pos(), left, top,
+							width, height, frame.width);
+						renderEmbeddedFrame(renderBitmap, frame, userId);
+						return;
+					}
+
 					frame.valid = false;
 
 					if (width > 0 && height > 0 && width <= 800 && height <= 480) {
@@ -457,7 +468,7 @@ void InsaneRebel2::loadEmbeddedSan(int userId, byte *animData, int32 size, byte 
 	debugC(DEBUG_INSANE, "No FOBJ found in embedded SAN userId=%d", userId);
 }
 
-void InsaneRebel2::spawnExplosion(int x, int y, int objectHalfWidth) {
+void InsaneRebel2::spawnExplosion(int x, int y, int objectHalfWidth, int dx, int dy) {
 	for (int i = 0; i < 5; i++) {
 		if (!_explosions[i].active || _explosions[i].counter <= 0) {
 			_explosions[i].active = true;
@@ -465,6 +476,8 @@ void InsaneRebel2::spawnExplosion(int x, int y, int objectHalfWidth) {
 			_explosions[i].x = x;
 			_explosions[i].y = y;
 			_explosions[i].scale = objectHalfWidth;
+			_explosions[i].dx = dx;
+			_explosions[i].dy = dy;
 			break;
 		}
 	}
@@ -500,7 +513,8 @@ void InsaneRebel2::spawnShot(int x, int y) {
 void InsaneRebel2::spawnTurretShot(int x, int y) {
 	for (int i = 0; i < 2; i++) {
 		if (_turretShots[i].counter == 0) {
-			playSfx((_rebelLevelType == 5) ? 0 : 7, 127, 0);
+			// Ship type 5 (the turbolaser levels 13-15) fires TBLAST, the rest BLAST.
+			playSfx((_rebelLevelType == 5) ? 7 : 0, 127, 0);
 
 			_turretShots[i].counter = getShotMaxDuration();
 			_turretShots[i].seqNum = _turretShotSeqCounter;
@@ -629,8 +643,16 @@ void InsaneRebel2::spawnSpaceShot(int x, int y) {
 			playSfx(6, 127, 0);
 
 			_spaceShots[i].counter = getShotMaxDuration();
+			// Shots are stored in presentation-window space (the projection without
+			// the scroll/crop offset), like the original; spawning happens before the
+			// frame's presentation pass, so strip the offset the projection baked in
+			// and let renderSpaceLaserShots apply the current frame's one.
 			Common::Point projected = getHandler7ProjectedPoint();
 			Common::Point target = getHandler7ShotTargetPoint();
+			projected.x -= _viewX;
+			projected.y -= _viewY;
+			target.x -= _viewX;
+			target.y -= _viewY;
 			int tableIndex = CLIP<int>(_shipDirectionIndex, 0, 34);
 
 			_spaceShots[i].targetX = target.x;
@@ -1571,6 +1593,7 @@ void InsaneRebel2::checkCollisionZones(byte *renderBitmap, int pitch, int width,
 			}
 
 			if (collision) {
+				_rebelDeathCause = 2;
 				int collisionDamage = (dparams.dodgeDamage >= 0) ? dparams.dodgeDamage : 0;
 
 				if (applyPlayerDamage(collisionDamage)) {
@@ -1579,6 +1602,12 @@ void InsaneRebel2::checkCollisionZones(byte *renderBitmap, int pitch, int width,
 				}
 				if (!_noDamage)
 					initDamageFlash();
+				const int hitAvgX = (cx1 + cx2 + cx3 + cx4) / 4;
+				const int hitAvgY = (cy1 + cy2 + cy3 + cy4) / 4;
+				playSfx(1, 127, CLIP(hitAvgX * -4, -127, 127));
+				// The amplified impulse enters the shake ring and decays over the next 14 frames.
+				_turretShakeRingX[14] = (int16)(CLIP(hitAvgX, -0x2b, 0x2b) * 8);
+				_turretShakeRingY[14] = (int16)(CLIP(hitAvgY, -0x19, 0x19) * 8);
 			} else {
 				if (dparams.dodgePoints > 0) {
 					addScore(dparams.dodgePoints);
@@ -1921,7 +1950,7 @@ void renderNutSpriteClipped(byte *dst, int pitch, int dstH,
 	}
 }
 
-static void renderNutSpriteScaledClipped(byte *dst, int pitch, int width, int height,
+void renderNutSpriteScaledClipped(byte *dst, int pitch, int width, int height,
 		int clipLeft, int clipTop, int clipRight, int clipBottom,
 		int x, int y, NutRenderer *nut, int spriteIdx, bool mirror, int scale, bool transparent231) {
 	if (!nut || spriteIdx < 0 || spriteIdx >= nut->getNumChars() || !dst)
@@ -2097,6 +2126,30 @@ void InsaneRebel2::updatePostRenderScroll(int width, int height) {
 	_viewX = (aimPos.x * maxScrollX) / viewportWidth;
 	_viewY = (aimPos.y * maxScrollY) / viewportHeight;
 
+	if (_rebelHandler == 0x26) {
+		// Dodge-fail view shake: the hit impulse travels a 15-slot weighted ring
+		// and nudges the scroll, with a +-5 jitter while the damage flash runs.
+		static const int16 kShakeWeights[14] = { 1, 1, 2, 2, 3, 3, 4, 8, 14, 16, 16, 14, 12, 6 };
+		int shakeX = 0, shakeY = 0, weightSum = 2;
+		for (int i = 0; i < 14; i++) {
+			_turretShakeRingX[i] = _turretShakeRingX[i + 1];
+			_turretShakeRingY[i] = _turretShakeRingY[i + 1];
+			shakeX += _turretShakeRingX[i] * kShakeWeights[i];
+			shakeY += _turretShakeRingY[i] * kShakeWeights[i];
+			weightSum += kShakeWeights[i];
+		}
+		_turretShakeRingX[14] = 0;
+		_turretShakeRingY[14] = 0;
+		shakeX /= weightSum;
+		shakeY /= weightSum;
+		if (_damageFlashCounter > 0) {
+			shakeX += _vm->_rnd.getRandomNumber(9) - 5;
+			shakeY += _vm->_rnd.getRandomNumber(9) - 5;
+		}
+		_viewX = CLIP<int>(_viewX + shakeX, 0, maxScrollX);
+		_viewY = CLIP<int>(_viewY + shakeY, 0, maxScrollY);
+	}
+
 	_player->setScrollOffset(_viewX, _viewY);
 }
 
@@ -2108,6 +2161,35 @@ void InsaneRebel2::updatePostRenderDeath() {
 			_vm->_smushVideoShouldFinish = true;
 		}
 	}
+}
+
+void InsaneRebel2::updateLevel7Fork(int32 curFrame) {
+	// Level 7 (TIE-fighter flight) forks at frame 0x638: if the ship is on the
+	// right half of the corridor (_flyShipScreenX past the 0xd4 center, matching
+	// the original's DAT_0047ab8c test), stop 07PLAY here so the alternate
+	// 07PLAYB segment can splice in. The left half plays 07PLAY through to its
+	// end. Sampled exactly once (the active flag is its own one-shot guard).
+	if (!_level7ForkActive || curFrame < 0x638)
+		return;
+
+	_level7ForkActive = false;
+	if (_flyShipScreenX + _smoothedVelocity > 0xd4) {
+		_level7TookRightFork = true;
+		_vm->_smushVideoShouldFinish = true;
+	}
+}
+
+void InsaneRebel2::updateLevel15TypeSwitch(int32 curFrame) {
+	// From frame 0x21e level 15 uses the type-0x10 difficulty column; runLevel15 resets per attempt.
+	// Tracked as a flag because the turret opcode-6 rewrites _rebelLevelType every frame.
+	if (_selectedLevel == 15 && curFrame >= 0x21e)
+		_level15SecondHalf = true;
+}
+
+void InsaneRebel2::updateLevel9WaveReset(int32 curFrame) {
+	// 09PLAY re-arms its gauge groups per wave; the counters clear between waves.
+	if (_selectedLevel == 9 && (curFrame == 0x19f || curFrame == 0x352))
+		resetGaugeCounters();
 }
 
 void InsaneRebel2::renderPostRenderMenuCursor(byte *renderBitmap, int pitch, int width, int height) {
@@ -2260,15 +2342,23 @@ void InsaneRebel2::updateGameplayDamageEffects(byte *renderBitmap, int pitch, in
 	}
 }
 
-void InsaneRebel2::updateGameplayDamageRecovery(int32 curFrame) {
-	// timed score tick in the same slot and does not reduce damage.
-	if ((_rebelHandler != 0x26 && _rebelHandler != 8 && _rebelHandler != 7) ||
-			(curFrame & 0xf) != 0 || _playerDamage <= 0) {
+void InsaneRebel2::updateGameplayTimedTick(int32 curFrame) {
+	// Every 16th frame the handlers score timePoints and recover one point of
+	// damage; the cover handler (25) scores without recovering.
+	if ((curFrame & 0xf) != 0)
 		return;
-	}
+	if (_rebelHandler != 7 && _rebelHandler != 8 && _rebelHandler != 25 && _rebelHandler != 0x26)
+		return;
 
-	_playerDamage--;
-	_playerShield = 255 - _playerDamage;
+	const int16 timePoints = getDifficultyParams().timePoints;
+	if (timePoints > 0)
+		addScore(timePoints);
+
+	if (_rebelHandler != 25 && _playerDamage > 0) {
+		_playerDamage--;
+		// Damage is uncapped, so an overshoot must not read back as shield.
+		_playerShield = (_playerDamage < 255) ? (int16)(255 - _playerDamage) : 0;
+	}
 }
 
 void InsaneRebel2::checkGameplayPostRenderCollisions(byte *renderBitmap, int pitch, int width, int height, int32 curFrame) {
@@ -2359,7 +2449,7 @@ void InsaneRebel2::renderGameplayPostFrame(byte *renderBitmap, int pitch, int wi
 
 	updateGameplayDamageEffects(renderBitmap, pitch, width, height);
 	checkGameplayPostRenderCollisions(renderBitmap, pitch, width, height, curFrame);
-	updateGameplayDamageRecovery(curFrame);
+	updateGameplayTimedTick(curFrame);
 
 	renderCrosshair(renderBitmap, pitch, width, height);
 
@@ -2390,21 +2480,32 @@ void InsaneRebel2::procPostRendering(byte *renderBitmap, int32 codecparam, int32
 
 	updatePostRenderScroll(width, height);
 	updatePostRenderDeath();
+	updateLevel7Fork(curFrame);
+	updateLevel15TypeSwitch(curFrame);
+	updateLevel9WaveReset(curFrame);
 
 	// End the looping attack-run segment once the shield/reactor is destroyed.
 	if (_rebelShieldGateActive) {
 		// Level 13: the finale (continuation segment, flag 0x40) ends when the last armed
-		// group (the reactor) is depleted; the approach segment plays fully.
+		// group (the reactor) is depleted.
 		if (_rebelReactorMode && _rebelGaugeArmed && _rebelLastArmedSlot >= 0 &&
 		    (_player->_curVideoFlags & 0x40) != 0) {
 			const int slot = _rebelLastArmedSlot;
-			const short remaining = (slot < 10) ? _rebelValueCounters[slot]
-			                                    : _rebelMaskCounters[slot - 10];
+			const short remaining = _rebelValueCounters[slot];
 			if (remaining <= 0)
 				_rebelShieldDestroyed = true;
 		}
 		if (_rebelShieldDestroyed)
 			_vm->_smushVideoShouldFinish = true;
+
+		// The original level 13 switches at frame count - 10. The remaining
+		// nine frames overlap the cached LOAD bridge that precedes 13PLAY_B.
+		if (_rebelReactorMode && maxFrame >= 9 && curFrame == maxFrame - 9 &&
+				!static_cast<SmushPlayerRebel2 *>(_player)->isPlayingLoadBuffer() &&
+				!_vm->_smushVideoShouldFinish) {
+			// Use normal EOF handling so queued audio survives the handoff.
+			_player->_endOfFile = true;
+		}
 	}
 
 	const int hudScale = isHiRes() ? 2 : getRebel2IndicatorScale(width, height);
@@ -2456,7 +2557,7 @@ void InsaneRebel2::initDamageFlash() {
 		_damageRestorePaletteValid = true;
 	}
 
-	if (_damageFlashCounter == 0) {
+	if (_damageFlashCounter == 0 && _player) {
 		memcpy(_damageSavedPalette, _player->_pal, 0x300);
 	}
 	_damageFlashCounter = 5;
@@ -2606,7 +2707,8 @@ void InsaneRebel2::renderLevelEndStatsOverlay(byte *renderBitmap, int pitch, int
 	if (!titleFmt || !titleFmt[0])
 		titleFmt = getRebel2LevelEndFallbackString(190);
 
-	Common::String password = getChapterPassword(_levelEndStats.levelId, _difficulty);
+	const int passwordChapter = _release.getCompletionPasswordChapter(_levelEndStats.levelId);
+	Common::String password = getChapterPassword(passwordChapter, _difficulty);
 	Common::String titleText = Common::String::format(titleFmt, password.c_str());
 	int visibleChars = curFrame + 10 - titleStart;
 	if (visibleChars > 0xbe)
@@ -2715,6 +2817,7 @@ void InsaneRebel2::renderTextOverlay(byte *renderBitmap, int pitch, int width, i
 	}
 
 	const int textScale = isHiRes() ? 2 : 1;
+	const bool useCJK = _vm->_language == Common::JA_JPN;
 	int drawY = _textOverlayY * textScale;
 	int visCount = 0;
 
@@ -2733,11 +2836,13 @@ void InsaneRebel2::renderTextOverlay(byte *renderBitmap, int pitch, int width, i
 				if (parseRebel2TextOverlayFormat(s, mFont, mColor, fonts, ARRAYSIZE(fonts), defaultFont))
 					continue;
 				lineFont = mFont;
-				byte c = (byte)*s++;
+				uint charLen;
+				uint16 c = decodeRebel2Char(s, lineEnd - s, charLen, useCJK);
+				s += charLen;
 				if (c >= 'a' && c <= 'z')
 					c = c - 'a' + 'A';
-				if (mFont && c < mFont->getNumChars())
-					lineWidth += mFont->getCharWidth(c);
+				if (mFont && (c > 0xff || c < mFont->getNumChars()))
+					lineWidth += mFont->getCharWidth((byte)c);
 				lineVisCount++;
 			}
 		}
@@ -2751,14 +2856,16 @@ void InsaneRebel2::renderTextOverlay(byte *renderBitmap, int pitch, int width, i
 			while (s < lineEnd && (visCount + lineCharsDrawn) < displayLen) {
 				if (parseRebel2TextOverlayFormat(s, curFont, curColor, fonts, ARRAYSIZE(fonts), defaultFont))
 					continue;
-				byte c = (byte)*s++;
+				uint charLen;
+				uint16 c = decodeRebel2Char(s, lineEnd - s, charLen, useCJK);
+				s += charLen;
 				if (c >= 'a' && c <= 'z')
 					c = c - 'a' + 'A';
-				if (!curFont || c >= curFont->getNumChars()) {
+				if (!curFont || (c <= 0xff && c >= curFont->getNumChars())) {
 					lineCharsDrawn++;
 					continue;
 				}
-				int charW = curFont->getCharWidth(c);
+				int charW = curFont->getCharWidth((byte)c);
 				if (drawX >= 0 && drawY >= 0 && charW > 0) {
 					drawRebel2Char(curFont, renderBitmap, clipRect, drawX, drawY, pitch, curColor, c);
 				}
@@ -2938,15 +3045,29 @@ void InsaneRebel2::renderStatusBarSprites(byte *renderBitmap, int pitch, int wid
 	int numSprites = _smush_cockpitNut->getNumChars();
 	const int statusScale = isHiRes() ? 2 : getRebel2IndicatorScale(width, height);
 
+	// Critical-damage warning beep every 25 gameplay frames; volume depends on the difficulty row.
+	if (_rebelHandler != 0 && _playerDamage > 170 && (curFrame % 25) == 0) {
+		int alertVolume;
+		switch (getDifficultyRow()) {
+		case 1: case 11: case 12:
+			alertVolume = 40;
+			break;
+		case 2: case 3: case 5: case 6: case 7: case 9: case 10: case 13:
+			alertVolume = 63;
+			break;
+		default:
+			alertVolume = 127;
+			break;
+		}
+		playSfx(3, alertVolume, 0);
+	}
+
 	if (numSprites > 1) {
 		renderNutSprite(renderBitmap, pitch, width, height,
 			_viewX, statusBarY + _viewY, _smush_cockpitNut, 1);
 	}
 
-	int difficulty = _difficulty;
-	if (difficulty > 3)
-		difficulty = 3;
-	int difficultySprite = difficulty + 2;
+	int difficultySprite = MIN((int)_difficulty, 4) + 1;
 	if (numSprites > difficultySprite) {
 		renderNutSprite(renderBitmap, pitch, width, height,
 			_viewX, statusBarY + _viewY, _smush_cockpitNut, difficultySprite);
@@ -3097,7 +3218,7 @@ void InsaneRebel2::renderHandler7FlySprite(byte *renderBitmap, int pitch, int wi
 	}
 }
 
-static Common::Point getHandler7SpriteDrawPoint(const Common::Point &base, NutRenderer *nut, int spriteIndex) {
+Common::Point getHandler7SpriteDrawPoint(const Common::Point &base, NutRenderer *nut, int spriteIndex) {
 	Common::Point point = base;
 	if (nut && spriteIndex >= 0 && spriteIndex < nut->getNumChars()) {
 		point.x += nut->getCharXOffset(spriteIndex);
@@ -3395,9 +3516,12 @@ void InsaneRebel2::renderHandler25ShipPre(byte *renderBitmap, int pitch, int wid
 			int overlayDrawX = renderHiRes ? (nativeOverlayX - nativeViewX) * renderScale : nativeOverlayX;
 			int overlayDrawY = renderHiRes ? (nativeOverlayY - nativeViewY) * renderScale : nativeOverlayY;
 
-			renderNutSpriteScaledClipped(renderBitmap, pitch, width, renderHeight,
-				0, 0, width, renderHeight,
-				overlayDrawX, overlayDrawY, _grd005Sprite, overlayIdx, false, renderScale, false);
+			if (!drawRebel2Codec45Sprite(_grd005Sprite, renderBitmap, pitch, width, height,
+					Common::Rect(0, 0, width, renderHeight), overlayDrawX, overlayDrawY, overlayIdx, renderScale)) {
+				renderNutSpriteScaledClipped(renderBitmap, pitch, width, renderHeight,
+					0, 0, width, renderHeight,
+					overlayDrawX, overlayDrawY, _grd005Sprite, overlayIdx, false, renderScale, false);
+			}
 
 			debugC(DEBUG_INSANE, "Handler25 PRE: GRD005 at (%d,%d) nutOff(%d,%d) viewOff(%d,%d) size(%d,%d) mode=%d scale=%d",
 				overlayDrawX, overlayDrawY, overlayXOffset, overlayYOffset,
@@ -3731,14 +3855,24 @@ void InsaneRebel2::renderSpaceExplosions(byte *renderBitmap, int pitch, int widt
 	if (!_smush_iconsNut)
 		return;
 
+	const bool renderHiRes = isHiRes() && width >= 640 && height >= 400;
+
 	for (int i = 0; i < 5; i++) {
 		if (!_explosions[i].active)
 			continue;
 
-		int screenX = _explosions[i].x;
-		int screenY = _explosions[i].y;
+		// Explosions live in raw flight-buffer coordinates: keep them moving
+		// with the victim's last motion and project into the presented window
+		// with the current perspective every frame.
+		_explosions[i].x += _explosions[i].dx;
+		_explosions[i].y += _explosions[i].dy;
+		Common::Point p = getHandler7ProjectedPointFor(_explosions[i].x, _explosions[i].y);
+		if (renderHiRes) {
+			p.x += _hiResPresentationViewX;
+			p.y += _hiResPresentationViewY;
+		}
 		renderExplosionFrame(renderBitmap, pitch, width, height, _explosions[i],
-			screenX, screenY, kExplosionAdvanceAfterDraw, true);
+			p.x, p.y, kExplosionAdvanceBeforeDraw, true);
 	}
 
 	if (_hitCooldown != 0) {
@@ -3746,7 +3880,6 @@ void InsaneRebel2::renderSpaceExplosions(byte *renderBitmap, int pitch, int widt
 
 		int numChars = _smush_iconsNut->getNumChars();
 		int spriteIndex = 0x15 - _hitCooldown;
-		const bool renderHiRes = isHiRes() && width >= 640 && height >= 400;
 		const int nativeViewX = renderHiRes ? _hiResPresentationViewX : _viewX;
 		const int nativeViewY = renderHiRes ? _hiResPresentationViewY : _viewY;
 
@@ -3964,6 +4097,13 @@ void InsaneRebel2::renderVehicleLaserShots(byte *renderBitmap, int pitch, int wi
 void InsaneRebel2::renderSpaceLaserShots(byte *renderBitmap, int pitch, int width, int height) {
 	int16 maxDuration = getShotMaxDuration();
 
+	// Shots are stored in presentation-window space; convert with the offset the
+	// current frame's presentation actually consumed (drawLaserBeam subtracts it
+	// back in high-res, the low-res paths draw into the scrolled/warped buffer).
+	const bool renderHiRes = isHiRes() && width >= 640 && height >= 400;
+	const int16 nativeViewX = renderHiRes ? _hiResPresentationViewX : _viewX;
+	const int16 nativeViewY = renderHiRes ? _hiResPresentationViewY : _viewY;
+
 	for (int i = 0; i < 2; i++) {
 		if (_spaceShots[i].counter <= 0)
 			continue;
@@ -3971,12 +4111,12 @@ void InsaneRebel2::renderSpaceLaserShots(byte *renderBitmap, int pitch, int widt
 		int16 pan = ((_spaceShots[i].targetX - 160) * (2 - _spaceShots[i].counter)) / 2;
 		pan = CLIP<int16>(pan, -127, 127);
 
-		int16 targetX = _spaceShots[i].targetX;
-		int16 targetY = _spaceShots[i].targetY;
-		int16 leftGunX = _spaceShots[i].leftGunX;
-		int16 leftGunY = _spaceShots[i].leftGunY;
-		int16 rightGunX = _spaceShots[i].rightGunX;
-		int16 rightGunY = _spaceShots[i].rightGunY;
+		int16 targetX = _spaceShots[i].targetX + nativeViewX;
+		int16 targetY = _spaceShots[i].targetY + nativeViewY;
+		int16 leftGunX = _spaceShots[i].leftGunX + nativeViewX;
+		int16 leftGunY = _spaceShots[i].leftGunY + nativeViewY;
+		int16 rightGunX = _spaceShots[i].rightGunX + nativeViewX;
+		int16 rightGunY = _spaceShots[i].rightGunY + nativeViewY;
 		int16 progress = maxDuration - _spaceShots[i].counter;
 
 		drawLaserBeam(renderBitmap, pitch, width, height,
@@ -4058,7 +4198,7 @@ void InsaneRebel2::renderHandler8PovOverlay(byte *renderBitmap, int pitch, int w
 	if (_rebelHandler != 8 || !renderBitmap || !_smush_talkfontNut || !_smush_povfontNut)
 		return;
 
-	Rebel2FontSet fontSet;
+	Rebel2FontSet fontSet(_vm->_language == Common::JA_JPN);
 	fontSet.numFonts = 4;
 	fontSet.defaultFont = 0;
 	fontSet.fonts[0] = _smush_talkfontNut;
@@ -4147,13 +4287,16 @@ void InsaneRebel2::renderCrosshair(byte *renderBitmap, int pitch, int width, int
 	bool targetLocked = false;
 
 	for (Common::List<enemy>::iterator it = _enemies.begin(); it != _enemies.end(); ++it) {
-		if (it->active && !it->destroyed && it->rect.contains(worldMousePos)) {
+		if (it->active && !it->destroyed && isTargetUnderAim(*it, worldMousePos)) {
 			targetLocked = true;
 			break;
 		}
 	}
 
 	if (targetLocked) {
+		// A fresh lock (timer fully decayed) pings LOCKON, panned by crosshair X.
+		if (_rebelHandler == 0x26 && _targetLockTimer == 0 && (getDifficultyParams().flags & 2) == 0)
+			playSfx(4, 127, CLIP(aimPos.x - 160, -127, 127));
 		_targetLockTimer = 7;
 	} else if (_targetLockTimer > 0) {
 		_targetLockTimer--;
@@ -4188,6 +4331,9 @@ void InsaneRebel2::renderCrosshair(byte *renderBitmap, int pitch, int width, int
 		int cw = _smush_iconsNut->getCharWidth(reticleIndex);
 		int ch = _smush_iconsNut->getCharHeight(reticleIndex);
 
+		// Enlarge the tiny third-person/cover reticles; the turret crosshair is already large.
+		const int spriteScale = (_rebelHandler == 0x26) ? 1 : 2;
+
 		const int reticleScale = isHiRes() ? 2 : getRebel2IndicatorScale(width, height);
 		int crosshairX = aimPos.x * reticleScale;
 		int crosshairY = aimPos.y * reticleScale;
@@ -4201,12 +4347,14 @@ void InsaneRebel2::renderCrosshair(byte *renderBitmap, int pitch, int width, int
 			crosshairY += _rebelViewOffsetY * reticleScale;
 		}
 
-		crosshairX += _smush_iconsNut->getCharXOffset(reticleIndex) - cw / 2;
-		crosshairY += _smush_iconsNut->getCharYOffset(reticleIndex) - ch / 2;
+		crosshairX += (_smush_iconsNut->getCharXOffset(reticleIndex) - cw / 2) * spriteScale;
+		crosshairY += (_smush_iconsNut->getCharYOffset(reticleIndex) - ch / 2) * spriteScale;
 
-		renderNutSprite(renderBitmap, pitch, width, height,
+		// reticle glyphs key only on color 0, so transparent231 is false.
+		renderNutSpriteScaledClipped(renderBitmap, pitch, width, height,
+			0, 0, width, height,
 			crosshairX, crosshairY,
-			_smush_iconsNut, reticleIndex);
+			_smush_iconsNut, reticleIndex, false, spriteScale, false);
 	}
 }
 

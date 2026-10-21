@@ -108,10 +108,12 @@ void OSystem_Wii::deinitGfx() {
 	free(_cursorPalette);
 	_cursorPalette = NULL;
 
-	free(_gamePixels);
-	_gamePixels = NULL;
+	if(_gamePixels != _gamePixelsTexture)
+		free(_gamePixelsTexture);
 
-	free(_gamePixelsTexture);
+	free(_gamePixels);
+
+	_gamePixels = NULL;
 	_gamePixelsTexture = NULL;
 
 	free(_overlayPixels);
@@ -280,12 +282,13 @@ void OSystem_Wii::initSize(uint width, uint height,
 			free(_gamePixels);
 		free(_gamePixelsTexture);
 
-		tex_format = GFX_TF_PALETTE_RGB565;
-
 		if (_pfGame.bytesPerPixel > 1) {
 			// TODO: Support other texture formats?
 			tex_format = GFX_TF_RGB565;
 			_pfGameTexture = _pfRGB565;
+		} else {
+			tex_format = GFX_TF_PALETTE_RGB565;
+			_pfGameTexture = Graphics::PixelFormat::createFormatCLUT8();
 		}
 
 		printf("initSize %u*%u*%u (%s -> %s match: %d)\n",
@@ -448,7 +451,6 @@ bool OSystem_Wii::needsScreenUpdate() {
 void OSystem_Wii::updateScreen() {
 	static f32 ar;
 	static gfx_screen_coords_t cc;
-	static f32 csx, csy;
 
 	u32 now = getMillis();
 	if (now - _lastScreenUpdate < 1000 / MAX_FPS)
@@ -508,13 +510,8 @@ void OSystem_Wii::updateScreen() {
 	}
 
 	if (_mouseVisible) {
-		if (_cursorDontScale) {
-			csx = 1.0f / _currentXScale;
-			csy = 1.0f / _currentYScale;
-		} else {
-			csx = 1.0f;
-			csy = 1.0f;
-		}
+		f32 csx = _cursorScaleX ? _cursorScaleX : 1.0f;
+		f32 csy = _cursorScaleY ? _cursorScaleY : 1.0f;
 
 		cc.x = f32(_mouseX - csx * _mouseHotspotX) * _currentXScale;
 		cc.y = f32(_mouseY - csy * _mouseHotspotY) * _currentYScale;
@@ -669,10 +666,10 @@ void OSystem_Wii::warpMouse(int x, int y) {
 
 void OSystem_Wii::setMouseCursor(const void *buf, uint w, uint h, int hotspotX,
 									int hotspotY, uint32 keycolor,
-									bool dontScale,
-									const Graphics::PixelFormat *format, const byte *mask) {
+									const Graphics::PixelFormat *format, const byte *mask,
+									frac_t scaleX, frac_t scaleY) {
 #ifdef PLATFORM_WII_OSYSTEM_GFX_DEBUG
-	printf("%s(%p, w:%u, h:%u, hsX:%d, hsY:%d, kc:%u, dontScale:%d, %p, %p)\n", __func__, buf, w, h, hotspotX, hotspotY, keycolor, dontScale, format, mask);
+	printf("%s(%p, w:%u, h:%u, hsX:%d, hsY:%d, kc:%u, scaleX:%f, scaleY:%f, %p, %p)\n", __func__, buf, w, h, hotspotX, hotspotY, keycolor, fracToDouble(scaleX), fracToDouble(scaleY), format, mask);
 #endif
 
 	if (mask)
@@ -760,7 +757,8 @@ void OSystem_Wii::setMouseCursor(const void *buf, uint w, uint h, int hotspotX,
 
 	_mouseHotspotX = hotspotX;
 	_mouseHotspotY = hotspotY;
-	_cursorDontScale = dontScale;
+	_cursorScaleX = fracToDouble(scaleX);
+	_cursorScaleY = fracToDouble(scaleY);
 
 	if (_pfCursor.bytesPerPixel == 1 && oldKeycolor != _mouseKeyColor)
 		updateMousePalette();

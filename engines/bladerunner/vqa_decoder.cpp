@@ -182,17 +182,23 @@ bool VQADecoder::loadStream(Common::SeekableReadStream *s) {
 	uint32 type;
 
 	readIFFChunkHeader(s, &chd);
-	if (chd.id != kFORM || !chd.size)
+	if (chd.id != kFORM || !chd.size) {
+		close();
 		return false;
+	}
 
 	type = s->readUint32BE();
 
-	if (type != kWVQA)
+	if (type != kWVQA) {
+		close();
 		return false;
+	}
 
 	do {
-		if (!readIFFChunkHeader(_s, &chd))
+		if (!readIFFChunkHeader(_s, &chd)) {
+			close();
 			return false;
+		}
 
 		bool rc = false;
 		switch (chd.id) {
@@ -212,6 +218,7 @@ bool VQADecoder::loadStream(Common::SeekableReadStream *s) {
 
 		if (!rc) {
 			warning("failed to handle chunk %s", tag2str(chd.id));
+			close();
 			return false;
 		}
 	} while (chd.id != kFINF);
@@ -868,7 +875,7 @@ bool VQADecoder::VQAVideoTrack::readCBFZ(Common::SeekableReadStream *s, uint32 s
 		uint16 *block_src = (uint16 *)codebookInfo.data;
 		uint8 *mask_src = (uint8 *)codebookInfo.data + (bpp * _maxBlocks * _blockW * _blockH);
 
-		for (uint x = 0; x < _maxBlocks * _blockW * _blockH; ++x) {
+		for (uint x = 0; x < static_cast<uint>(_maxBlocks * _blockW * _blockH); ++x) {
 #ifdef SCUMM_BIG_ENDIAN
 			// Swap bytes to big endian as the source is little endian
 			block_src[x] = SWAP_BYTES_16(block_src[x]);

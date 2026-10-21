@@ -108,7 +108,7 @@ public:
 	DirectorMetaEngineDetection() : AdvancedMetaEngineDetection(Director::gameDescriptions, directorGames) {
 		_maxScanDepth = 5;
 		_directoryGlobs = Director::directoryGlobs;
-		_flags = kADFlagMatchFullPaths | kADFlagCanPlayUnknownVariants;
+		_flags = kADFlagMatchFullPaths | kADFlagCanPlayUnknownVariants | kADFlagUseExtraAsHint;
 
 		_fallback_blacklisted_names["Macromedia Projector"] = true;
 		_fallback_blacklisted_names["Projector Skeleton"] = true;
@@ -441,7 +441,7 @@ DetectedGame DirectorMetaEngineDetection::toDetectedGame(const ADDetectedGame &a
 
 	if (desc->desc.platform == Common::kPlatformMacintosh || desc->desc.platform == Common::kPlatformPippin)
 		game.appendGUIOptions(Common::getGameGUIOptionsDescription(GAMEOPTION_GAMMA_CORRECTION));
-	if (!(desc->desc.flags & Director::GF_32BPP))
+	if (!(desc->desc.flags & Director::GF_TRUECOLOR))
 		game.appendGUIOptions(Common::getGameGUIOptionsDescription(GAMEOPTION_TRUE_COLOR));
 
 	return game;

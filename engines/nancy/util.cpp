@@ -19,8 +19,15 @@
  */
 
 #include "engines/nancy/enginedata.h"
+#include "engines/nancy/graphics.h"
 #include "engines/nancy/nancy.h"
+#include "engines/nancy/puzzledata.h"
 #include "engines/nancy/util.h"
+
+#include "engines/nancy/state/scene.h"
+#include "engines/nancy/ui/textbox.h"
+
+#include "common/config-manager.h"
 #include "common/system.h"
 
 namespace Nancy {
@@ -36,6 +43,13 @@ void readRect(Common::SeekableReadStream &stream, Common::Rect &inRect) {
 		++inRect.right;
 		++inRect.bottom;
 	}
+}
+
+void readExclusiveRect(Common::SeekableReadStream &stream, Common::Rect &inRect) {
+	inRect.left = stream.readSint32LE();
+	inRect.top = stream.readSint32LE();
+	inRect.right = stream.readSint32LE();
+	inRect.bottom = stream.readSint32LE();
 }
 
 void readRect(Common::Serializer &stream, Common::Rect &inRect, Common::Serializer::Version minVersion, Common::Serializer::Version maxVersion) {
@@ -248,6 +262,50 @@ void readFilenameArray(Common::Serializer &stream, Common::Array<Common::Path> &
 	}
 }
 
+Common::Rect viewportScreenToBackground(const Common::Rect &screenRegion) {
+	const UI::Viewport &viewport = NancySceneState.getViewport();
+	const Graphics::ManagedSurface &background = viewport.getBackground();
+	const Common::Rect vpScreen = viewport.getScreenPosition();
+	const int scrollY = (int)viewport.getCurVerticalScroll();
+
+	Common::Rect grab;
+	if (screenRegion.isEmpty()) {
+		grab = Common::Rect(vpScreen.width(), vpScreen.height());
+		grab.translate(0, scrollY);
+	} else {
+		grab = screenRegion;
+		grab.translate(-vpScreen.left, -vpScreen.top + scrollY);
+	}
+
+	grab.clip(Common::Rect(background.w, background.h));
+	return grab;
+}
+
+bool captureViewportPicture(const Common::Rect &backgroundRegion, CapturedPicture &picture) {
+	const Graphics::ManagedSurface &background = NancySceneState.getViewport().getBackground();
+	if (background.w == 0 || background.h == 0 || backgroundRegion.isEmpty()) {
+		return false;
+	}
+
+	Graphics::Surface sub = background.rawSurface().getSubArea(backgroundRegion);
+	Graphics::Surface *converted = sub.convertTo(g_nancy->_graphics->getScreenPixelFormat());
+	if (!converted) {
+		return false;
+	}
+
+	picture.width = (uint16)converted->w;
+	picture.height = (uint16)converted->h;
+	picture.pixels.resize((uint)picture.width * (uint)picture.height * 4);
+	for (int y = 0; y < converted->h; ++y) {
+		memcpy(picture.pixels.data() + (uint)y * (uint)picture.width * 4,
+				converted->getBasePtr(0, y), (uint)picture.width * 4);
+	}
+
+	converted->free();
+	delete converted;
+	return true;
+}
+
 void readUIButton(Common::SeekableReadStream &stream, UIButtonRecord &dst) {
 	// Read common fields for both buttons and sliders
 	readFilename(stream, dst.primaryImageName);
@@ -264,7 +322,7 @@ void readUIButton(Common::SeekableReadStream &stream, UIButtonRecord &dst) {
 	dst.hoverCursorFlag = stream.readUint32LE();
 	dst.secondaryStateField = stream.readUint32LE();
 	dst.initialState = stream.readUint32LE();
-	dst.reservedField = stream.readUint32LE();
+	dst.pressedDuration = stream.readUint32LE();
 
 	dst.clickSound.readNormal(stream);
 }
@@ -323,6 +381,21 @@ void readUIPopupHeader(Common::SeekableReadStream &stream, UIPopupHeader &dst) {
 
 // A text line will often be broken up into chunks separated by nulls, use
 // this function to put it back together as a Common::String
+bool parseSceneName(const Common::String &sceneName, uint16 &sceneID) {
+	if (sceneName.size() < 2 || tolower(sceneName[0]) != 's') {
+		return false;
+	}
+
+	for (uint i = 1; i < sceneName.size(); ++i) {
+		if (!Common::isDigit(sceneName[i])) {
+			return false;
+		}
+	}
+
+	sceneID = (uint16)atoi(sceneName.c_str() + 1);
+	return true;
+}
+
 void assembleTextLine(char *rawCaption, Common::String &output, uint size) {
 	for (uint i = 0; i < size; ++i) {
 		// A single line can be broken up into bits, look for them and
@@ -344,36 +417,68 @@ void assembleTextLine(char *rawCaption, Common::String &output, uint size) {
 	}
 }
 
-Common::String getTextFromCaseInsensitiveKey(Common::HashMap<Common::String, Common::String> texts, Common::String &key) {
-	if (texts.contains(key)) {
-		return texts[key];
-	} else {
-		// Nancy10+ searched keyed texts in a key insensitive way, but
-		// the possible permutations involve mainly the last character
-		// being upper or lower case, so just try that before giving up.
-		if (key[key.size() - 1] == toupper(key[key.size() - 1]))
-			key[key.size() - 1] = tolower(key[key.size() - 1]);
-		else
-			key[key.size() - 1] = toupper(key[key.size() - 1]);
-
-		if (texts.contains(key))
-			return texts[key];
-
-		// Try all uppercase
-		key.toUppercase();
-
-		if (texts.contains(key))
-			return texts[key];
-
-		// Check for lowercase cases for the second to last character, for Nancy11+
-		key[key.size() - 2] = tolower(key[key.size() - 2]);
-
-		if (texts.contains(key))
-			return texts[key];
+Common::String resolveSubtitleText(const Common::String &keyOrText, const Common::String &fallback, const char *tableID) {
+	if (!keyOrText.empty()) {
+		const CVTX *table = (const CVTX *)g_nancy->getEngineData(tableID);
+		if (table && table->texts.contains(keyOrText)) {
+			return table->texts[keyOrText];
+		}
 	}
 
-	warning("Key not found: %s", key.c_str());
-	return "";
+	return fallback;
+}
+
+void readExitHotspots(Common::SeekableReadStream &stream, Common::Array<ExitHotspot> &hotspots) {
+	int16 numZones = stream.readSint16LE();
+	hotspots.resize(numZones);
+
+	for (int16 i = 0; i < numZones; ++i) {
+		ExitHotspot &zone = hotspots[i];
+		readRect(stream, zone.hotspot);
+		zone.cursorType = stream.readUint16LE();
+		zone.scene.sceneID = stream.readUint16LE();
+		zone.scene.frameID = 0;
+		zone.flag.label = stream.readSint16LE();
+		zone.flag.flag = stream.readByte();
+	}
+}
+
+void readExitHotspot(Common::SeekableReadStream &stream, Common::Rect &hotspot, uint16 &cursorType,
+					SceneChangeDescription &scene, FlagDescription &flag) {
+	Common::Array<ExitHotspot> hotspots;
+	readExitHotspots(stream, hotspots);
+
+	if (!hotspots.empty()) {
+		hotspot = hotspots[0].hotspot;
+		cursorType = hotspots[0].cursorType;
+		scene = hotspots[0].scene;
+		flag = hotspots[0].flag;
+	}
+}
+
+Common::String readSubtitleText(Common::SeekableReadStream &stream) {
+	char buf[30];
+	stream.read(buf, sizeof(buf));
+	buf[sizeof(buf) - 1] = '\0';
+	Common::String text(buf);
+
+	return resolveSubtitleText(text, text);
+}
+
+void showSubtitle(const Common::String &text, bool forceRedraw, int overrideFontID) {
+	if (text.empty() || !ConfMan.getBool("subtitles")) {
+		return;
+	}
+
+	UI::Textbox &textbox = NancySceneState.getTextbox();
+	textbox.clear();
+	if (overrideFontID >= 0) {
+		textbox.setOverrideFont(overrideFontID);
+	}
+	textbox.addTextLine(text);
+	if (forceRedraw) {
+		textbox.drawTextbox();
+	}
 }
 
 bool DeferredLoader::load(uint32 endTime) {

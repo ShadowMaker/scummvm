@@ -200,12 +200,51 @@ inline bool hasLevel2AsteroidImpact(uint16 frameCounter, int16 perspectiveX, int
 	switch (frameCounter) {
 	case 0x0071:
 	case 0x0271:
-		return perspectiveX >= 0x28;
+	case 0x02DD:
+		return perspectiveX <= 0x28;
 	case 0x011E:
-		return perspectiveY >= 0x1F;
+		return perspectiveY <= 0x1F;
 	case 0x01E1:
 	case 0x02ED:
-		return perspectiveX > 0x17;
+		return perspectiveX >= 0x18;
+	default:
+		return false;
+	}
+}
+
+// Level 6 counterpart of hasLevel2AsteroidImpact (scheduled asteroid passes).
+inline bool hasLevel6AsteroidImpact(uint16 frameCounter, int16 perspectiveX, int16 perspectiveY) {
+	switch (frameCounter) {
+	case 0x006A:
+	case 0x011C:
+	case 0x0563:
+		return perspectiveX >= 0x18;
+	case 0x008B:
+	case 0x00FD:
+	case 0x016F:
+	case 0x0222:
+	case 0x02EB:
+		return perspectiveX <= 0x28;
+	case 0x0144:
+	case 0x04FF:
+		return perspectiveX <= 0x28 && perspectiveY <= 0x1F;
+	case 0x01DE:
+	case 0x0492:
+		return perspectiveX >= 8;
+	case 0x024A:
+		return perspectiveY <= 0x26;
+	case 0x0318:
+		return perspectiveY < 0x0F;
+	case 0x0397:
+		return perspectiveX >= 0x18 && perspectiveY <= 0x1F;
+	case 0x0405:
+		return perspectiveX > 0x28;
+	case 0x0462:
+		return perspectiveY <= 0x1F;
+	case 0x04F1:
+		return perspectiveY >= 0x0F && perspectiveX <= 0x28;
+	case 0x0617:
+		return perspectiveX > 0x28 || perspectiveX < 8 || perspectiveY > 0x1F || perspectiveY < 0x0F;
 	default:
 		return false;
 	}
@@ -254,6 +293,7 @@ inline bool isLevel6DamageLatch(uint16 code) {
 	case 0x0009:
 	case 0x000D:
 	case 0x000F:
+	case 0x001A:
 	case 0x0028:
 		return true;
 	default:
@@ -421,47 +461,10 @@ inline bool isLevel14Phase2DamageLatch(uint16 code) {
 	}
 }
 
-inline bool hasLevel6PerspectiveHazard(uint16 frame, int16 perspectiveX, int16 perspectiveY) {
-	switch (frame) {
-	case 0x006A:
-	case 0x00FD:
-	case 0x011C:
-	case 0x0563:
-		return perspectiveX < 0x18;
-	case 0x0144:
-		return perspectiveX < 0x29 && perspectiveY < 0x20;
-	case 0x016F:
-	case 0x0222:
-	case 0x02EB:
-		return perspectiveX < 0x29;
-	case 0x01DE:
-	case 0x0492:
-		return perspectiveX < 8;
-	case 0x024A:
-		return perspectiveY < 0x27;
-	case 0x0318:
-		return perspectiveY < 0x0F;
-	case 0x0397:
-		return perspectiveX < 0x18 && perspectiveY < 0x20;
-	case 0x0405:
-		return perspectiveX > 0x28;
-	case 0x0462:
-		return perspectiveY < 0x20;
-	case 0x04F1:
-		return perspectiveX < 0x29 && perspectiveY >= 0x0F;
-	case 0x04FF:
-		return perspectiveX < 0x29 && perspectiveY < 0x20;
-	case 0x0617:
-		return !(perspectiveX > 7 && perspectiveX < 0x29 &&
-			perspectiveY > 0x0E && perspectiveY < 0x20);
-	default:
-		return false;
-	}
-}
-
-inline bool hasLevel8WalkerHazardRoute0(uint16 frame, int16 viewX, int16 viewY) {
+inline bool hasLevel8WalkerHazardRoute0(uint16 frame, int16 viewX, int16 viewY, bool earlyShot) {
 	switch (frame) {
 	case 0x00CD:
+		return earlyShot && viewX <= 0x28;
 	case 0x00EF:
 		return viewX <= 0x28;
 	case 0x0294:
@@ -510,10 +513,10 @@ inline bool hasLevel8WalkerHazardRoute2(uint16 frame, int16 viewX, int16 viewY) 
 	}
 }
 
-inline bool hasLevel8WalkerPlayerHit(int route, uint16 frame, int16 viewX, int16 viewY) {
+inline bool hasLevel8WalkerPlayerHit(int route, uint16 frame, int16 viewX, int16 viewY, bool earlyShot) {
 	switch (CLIP<int>(route, 0, 2)) {
 	case 0:
-		return hasLevel8WalkerHazardRoute0(frame, viewX, viewY);
+		return hasLevel8WalkerHazardRoute0(frame, viewX, viewY, earlyShot);
 	case 1:
 		return hasLevel8WalkerHazardRoute1(frame, viewX, viewY);
 	case 2:
@@ -692,19 +695,21 @@ void InsaneRebel1::checkDynamicLevelBranch(int32 curFrame) {
 		return;
 
 	if ((_currentLevel == 6 || _currentLevel == 7) && _pendingRouteIndex >= 0) {
-		const uint32 routeFrame = (_currentLevel == 6 && curFrame >= 0) ?
-			(uint32)curFrame : (uint32)_gameCounter;
+		const uint32 routeFrame = (curFrame >= 0) ?
+			(uint32)curFrame : (uint32)_currentSmushFrame;
 		if (!_vm->_smushVideoShouldFinish &&
 			_pendingRouteCutoverFrame >= 0 &&
 			routeFrame >= (uint32)_pendingRouteCutoverFrame) {
-			if (_player && _currentLevel != 6)
-				_player->setPreserveGameVideoStateOnRelease(true);
+			// L7 destinations can contain no audio chunks at all. L8 preservation
+			// is decided by SmushPlayer at the actual stop, after the final frame
+			// has resolved whether the player or walker was destroyed.
+			if (_currentLevel == 6)
+				preserveInteractiveVideoAudioState();
 			_vm->_smushVideoShouldFinish = true;
 			const int32 resumeFrame = (_currentLevel == 6 && _pendingRouteStartFrame < 0) ?
 				0 : _pendingRouteStartFrame;
-			debugC(DEBUG_INSANE, "L%d cutover: route=%d -> %d at %s=%u (resumeFrame=%d)",
+			debugC(DEBUG_INSANE, "L%d cutover: route=%d -> %d at localFrame=%u (resumeFrame=%d)",
 				_currentLevel + 1, _levelRouteIndex, _pendingRouteIndex,
-				_currentLevel == 6 ? "localFrame" : "frame",
 				(unsigned)routeFrame, (int)resumeFrame);
 		}
 		return;
@@ -758,8 +763,8 @@ void InsaneRebel1::checkDynamicLevelBranch(int32 curFrame) {
 		}
 	}
 
-	// Level 8 owns its branch choice in updateLevel8WalkerState(), where the
-	// choice variable. This function only performs the delayed route cutover.
+	// Level 8 schedules its branch in updateLevel8WalkerState() and commits it
+	// after rendering the following frame.
 }
 
 void InsaneRebel1::projectGameplayPoint(int16 &x, int16 &y) const {
@@ -887,14 +892,16 @@ bool InsaneRebel1::updateGamepadReticleAim(int16 &inputX, int16 &inputY, bool *u
 		(_vm->getActionState(kScummActionInsaneRight) ? 1 : 0) -
 		(_vm->getActionState(kScummActionInsaneLeft) ? 1 : 0);
 	int dpadY =
-		(_vm->getActionState(kScummActionInsaneUp) ? 1 : 0) -
-		(_vm->getActionState(kScummActionInsaneDown) ? 1 : 0);
+		(_vm->getActionState(kScummActionInsaneDown) ? 1 : 0) -
+		(_vm->getActionState(kScummActionInsaneUp) ? 1 : 0);
 
 	const int16 analogAxisX = applyRebel1AnalogDeadzone(_joystickAxisX);
 	const int16 analogAxisY = applyRebel1AnalogDeadzone(_joystickAxisY);
 	const int analogX = CLIP<int32>(((int32)analogAxisX * kRA1CenteredAxisMax) / Common::JOYAXIS_MAX,
 		-kRA1CenteredAxisMax, kRA1CenteredAxisMax);
-	int analogY = CLIP<int32>((-(int32)analogAxisY * kRA1Op0BVerticalAxisMax) / Common::JOYAXIS_MAX,
+	// DOS FUN_231BE leaves joystick-up negative, and the opcode 0x0B handler
+	// (FUN_1CDA7) negates Y when it computes the on-screen flight position.
+	int analogY = CLIP<int32>(((int32)analogAxisY * kRA1Op0BVerticalAxisMax) / Common::JOYAXIS_MAX,
 		-kRA1Op0BVerticalAxisMax, kRA1Op0BVerticalAxisMax);
 
 	if (_optControlsYFlip) {
@@ -957,11 +964,23 @@ void InsaneRebel1::preprocessMouseAxes(int16 &inputX, int16 &inputY, bool *usedJ
 		(_vm->getActionState(kScummActionInsaneUp) ? 1 : 0) -
 		(_vm->getActionState(kScummActionInsaneDown) ? 1 : 0);
 
+	const bool op0BDigitalPosition = (effectiveOpcode == 0x0B);
+
 	if (joyX != 0 || joyY != 0) {
 		_activeInputSource = kInputSourceJoystickDigital;
 
 		if (usedJoystick)
 			*usedJoystick = true;
+
+		if (op0BDigitalPosition) {
+			// The D-pad moves a persistent position (the original steers with an absolute device), so parked edge dodges stay reachable.
+			const int stepY = (_optControlsYFlip ? -joyY : joyY) * kRA1ControlPadAxisStep;
+			_op0BDigitalAxisX = CLIP<int16>(_op0BDigitalAxisX + joyX * kRA1ControlPadAxisStep, -0xA0, 0xA0);
+			_op0BDigitalAxisY = CLIP<int16>(_op0BDigitalAxisY + stepY, -kRA1Op0BVerticalAxisMax, kRA1Op0BVerticalAxisMax);
+			inputX = _op0BDigitalAxisX;
+			inputY = _op0BDigitalAxisY;
+			return;
+		}
 
 		inputX = joyX * kRA1ControlPadAxisStep;
 		inputY = joyY * kRA1ControlPadAxisStep;
@@ -996,11 +1015,13 @@ void InsaneRebel1::preprocessMouseAxes(int16 &inputX, int16 &inputY, bool *usedJ
 		if (usedJoystick)
 			*usedJoystick = true;
 
-		inputX = 0;
-		inputY = 0;
-
-		if (_optControlsYFlip)
-			inputY = -inputY;
+		if (op0BDigitalPosition) {
+			inputX = _op0BDigitalAxisX;
+			inputY = _op0BDigitalAxisY;
+		} else {
+			inputX = 0;
+			inputY = 0;
+		}
 
 		return;
 	}
@@ -1208,17 +1229,21 @@ void InsaneRebel1::updateShipPhysics() {
 
 	_damageFlags = 0;
 
-	// After this point, drift goes strongly negative (pushing ship left for the hard path).
-	if (_pathBranchEnabled && _gameCounter >= kPathBranchCounter) {
-		if (_shipPosX > kRA1CenterX) {
-			_rightPathSelected = true;
+	// The original chooses at frame 386, then keeps the source through frame
+	// 391. The right-hand clip resumes at local frame 1 after that shared frame.
+	if (_pathBranchEnabled && _currentSmushFrame >= kLevel1BranchDecisionFrame) {
+		if (!_rightPathSelected) {
+			_rightPathSelected = _shipPosX > kRA1CenterX;
+			if (!_rightPathSelected)
+				_pathBranchEnabled = false;
+			debugC(DEBUG_INSANE, "L1 path selected: right=%d localFrame=%d shipX=%d",
+				_rightPathSelected ? 1 : 0, (int)_currentSmushFrame, _shipPosX);
+		}
+		if (_rightPathSelected && _currentSmushFrame >= kLevel1BranchCutoverFrame) {
+			_pathBranchEnabled = false;
 			preserveInteractiveVideoAudioState();
 			_vm->_smushVideoShouldFinish = true;
-			debugC(DEBUG_INSANE, "Right path selected (counter=%d, shipX=%d)", _gameCounter, _shipPosX);
-		} else {
-			debugC(DEBUG_INSANE, "Left path retained (counter=%d, shipX=%d)", _gameCounter, _shipPosX);
 		}
-		_pathBranchEnabled = false;
 	}
 
 	if (_currentLevel != 6)
@@ -1477,7 +1502,7 @@ void InsaneRebel1::updateGameOp0BPhysics() {
 			_damageFlags |= 0x80;
 	}
 
-	if (_currentLevel == 5 && hasLevel6PerspectiveHazard((uint16)_frameCounter, _perspectiveX, _perspectiveY))
+	if (_currentLevel == 5 && hasLevel6AsteroidImpact((uint16)_gameCounter, _perspectiveX, _perspectiveY))
 		_damageFlags |= 0x20;
 	if (level15FinalPhase && hasLevel15FinalSweepDamage((uint16)_gameCounter, _perspectiveX))
 		_damageFlags |= 0x20;
@@ -1488,18 +1513,23 @@ void InsaneRebel1::updateGameOp0BPhysics() {
 			_damageFlags |= 0x20;
 	}
 
+
 	bool level8WalkerPlayerHit = false;
 	if (_currentLevel == 7) {
-		const uint16 walkerFrame = (uint16)_gameCounter;
+		const uint16 walkerFrame = (uint16)_currentSmushFrame;
 		level8WalkerPlayerHit = hasLevel8WalkerPlayerHit(_levelRouteIndex, walkerFrame,
-			_perspectiveX, _perspectiveY);
+			_perspectiveX, _perspectiveY, _release.walker->earlyShot);
 		// Player collision and boss damage are tracked separately.
 		if (level8WalkerPlayerHit)
 			_damageFlags |= 0x20;
 	}
 
-	if (_health >= 0 && _health < kMaxHealth && (_frameCounter & 0x1F) == 0) {
-		_health++;
+	// Health regeneration + survival bonus every 32 frames (UpdatePeriodicScoreAndHealth)
+	if ((_frameCounter & 0x1F) == 0) {
+		if (_health >= 0 && _health < kMaxHealth)
+			_health++;
+		if (_health >= 0)
+			_score += _tuning.time;
 	}
 
 	if (!_noDamage && _damageFlags != 0 && _health >= 0 && _deathTimer < 1) {
@@ -1968,6 +1998,8 @@ void InsaneRebel1::handleGameOpcode5EReset(uint32 param1) {
 	_liftSmooth = 0;
 	_posAccumX = 0;
 	_posAccumY = 0;
+	_op0BDigitalAxisX = 0;
+	_op0BDigitalAxisY = 0;
 	memset(_inputHistoryX, 0, sizeof(_inputHistoryX));
 	memset(_inputHistoryY, 0, sizeof(_inputHistoryY));
 	memset(_viewHistoryX, 0, sizeof(_viewHistoryX));
@@ -1982,7 +2014,7 @@ void InsaneRebel1::handleGameOpcode5EReset(uint32 param1) {
 	_playerFired = false;
 	_playerSecondaryHeld = false;
 	_fireCooldown = 0;
-	_rapidFirePhase = 0;
+	_rapidFireCounter = 0;
 	memset(_shotSlots, 0, sizeof(_shotSlots));
 	_shotAlternator = 0;
 	_shotSideToggle = false;
@@ -2321,20 +2353,23 @@ void InsaneRebel1::handleGameChunk(int32 subSize, Common::SeekableReadStream &b,
 
 // Called once per frame during interactive rendering.
 void InsaneRebel1::processShot() {
+	// Rapid fire (not in the DOS original, ported from RA2) repeats held
+	// shots every 5th frame from the press.
+	const bool freshPress = _playerFired && _fireCooldown == 0;
+	if (freshPress)
+		_rapidFireCounter = 0;
+
+	bool rapidFireShot = false;
 	if (_optRapidFire) {
-		// fires immediately, while held repeats are gated to phase 0.
-		_rapidFirePhase++;
-		if (_rapidFirePhase > 2)
-			_rapidFirePhase = 0;
+		rapidFireShot = (_rapidFireCounter % 5 == 0) && _playerFired;
+		_rapidFireCounter++;
 	}
 
 	if (!_playerFired)
 		return;
 
-	if (_fireCooldown != 0) {
-		if (!_optRapidFire || _rapidFirePhase != 0)
-			return;
-	}
+	if (_fireCooldown != 0 && !rapidFireShot)
+		return;
 
 	// On-foot mode: only spawn when in aiming stance (dirIndex 11-19) or flags force it.
 	const uint16 effectiveOpcode = getEffectiveGameOpcode();
