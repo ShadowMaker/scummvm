@@ -48,7 +48,7 @@ public:
 	void executeDraw();
 	void waitForDraw();
 	void publishPlanet() { _pending = kPlanet; }
-	void showRing(bool visible);
+	void showRing(bool planetEntry);
 	void showPlanet();
 	void requestCockpit() { _nextScreen = &_cockpit; }
 	bool serviceLoading() override;

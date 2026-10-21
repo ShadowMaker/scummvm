@@ -22,13 +22,27 @@
 #include "cblood/planet.h"
 #include "common/str.h"
 namespace CBlood {
-GameState::GameState() : language(Startup::kNoLanguage), planetRandom("cblood-planets"),
+GameState::GameState() : protectionFailure(false), forceHandTremor(0),
+	language(Startup::kNoLanguage), planetRandom("cblood-planets"),
 	currentPlanet(0), alienOffset(0), alienState(0), bloodDeadline(12000),
 	localSeed(0), gameStartMillis(0) {
 	memset(alienPlanets, 0, sizeof(alienPlanets));
 }
 uint16 GameState::gameClock(uint32 playTime) const {
 	return Planet::clockValue(playTime - gameStartMillis);
+}
+void GameState::setProtectionFailure(bool enabled) {
+	protectionFailure = enabled;
+	forceHandTremor = enabled ? 1 : 0;
+	bloodDeadline = enabled ? 0 : 12000;
+	// Simulate scan failure without reading protected sectors.
+	// TODO: Start the failed-scan countdown at 7; decrement on planet generation, redirect clicks to destruction when its high word is negative
+	// TODO: Reject loads with negative diskScanCheck after planet restore, before restoring the remaining 940 bytes
+	// TODO: For nonzero diskScanCheck, skip the first save and retry setup. Preserve the native close/error/retry path
+	// TODO: Save deadline/forced tremor, but not diskScanCheck
+	// TODO: Block map keyboard controls during tremor
+	// TODO: Add qualifying disintegration credit to bloodDeadline
+	// TODO: Set and later clear forceHandTremor during the ending. Neither gameplay effect depends on protectionFailure
 }
 bool GameState::initCoordinates() {
 	return Planet::initCoordinates(alienPlanets, alienOffset,

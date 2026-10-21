@@ -45,6 +45,7 @@ private:
 	Startup::Intro _intro;
 	bool _introActive, _keyPressed, _markerSeen;
 	int _selectedImage, _activePalette;
+	int _coverWait = 0;
 };
 } // namespace CBlood
 #endif

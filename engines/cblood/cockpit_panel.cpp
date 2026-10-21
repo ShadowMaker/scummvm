@@ -32,6 +32,14 @@ CockpitPanel::CockpitPanel(ScreenController &host, GameState &state, Resources &
 	resetClock();
 }
 void CockpitPanel::initData() {
+	HandMotion &motion = _state.handMotion;
+	motion.gate = _resources.readU16(0x174aa);
+	motion.delayX = _resources.readU16(0x174ac);
+	motion.reloadX = _resources.readU16(0x174ae);
+	motion.stepX = _resources.readU16(0x174b0);
+	motion.delayY = _resources.readU16(0x174b4);
+	motion.reloadY = _resources.readU16(0x174b6);
+	motion.stepY = _resources.readU16(0x174b8);
 	_resources.readResource(0x17d6a, digits, sizeof(digits));
 	_resources.readResource(0x17cf0, _resources.digitGlyphs, sizeof(_resources.digitGlyphs));
 	_resources.readResource(0x17d54, clockDigits, sizeof(clockDigits));
@@ -55,6 +63,7 @@ void CockpitPanel::pollGameClock() {
 	if (!ready) return;
 	if (elapsed == shownClock) return;
 	shownClock = elapsed;
+	_state.handMotion.refresh(elapsed, _state.bloodDeadline, _state.forceHandTremor);
 	Planet::formatClock(clockDigits, elapsed);
 	Planet::drawDigits(_renderer.screen, _resources.digitGlyphs, clockDigits);
 	debug(1, "cblood: clock display %u", elapsed);
@@ -105,6 +114,7 @@ void CockpitPanel::drawHand() {
 	byte scratch[2664];
 	Startup::mergeHand(_renderer.screen, scratch, &_resources.bloodM[0], oldHandDest,
 		oldHandHeight, cursorX & 15, _handTop);
+	_state.handMotion.tick(cursorX, cursorY, cursorYClamp);
 }
 void CockpitPanel::draw(DrawJob job, int button) {
 	if (job == kCover || job == kReveal) {

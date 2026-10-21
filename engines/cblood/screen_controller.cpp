@@ -19,6 +19,7 @@
  *
  */
 #include "cblood/screen_controller.h"
+#include "cblood/ring_timing.h"
 #include "common/debug.h"
 #include "common/system.h"
 #include "cblood/cblood.h"
@@ -101,25 +102,29 @@ void ScreenController::queueDraw(DrawJob job, int button) {
 	_pending = job;
 }
 
-void ScreenController::showRing(bool visible) {
+void ScreenController::showRing(bool planetEntry) {
 	const uint32 start = millis();
+	const RingTiming *timings = planetEntry ? kPlanetRings : kSelectorRings;
 	int step = 0;
+	auto waitUntil = [this, start](uint32 cycles) {
+		const uint32 deadline = ringMillis(cycles);
+		while (!shouldQuit() && millis() - start < deadline) {
+			pumpFrames();
+			delay(1);
+		}
+	};
 	queueDraw(kBackup);
 	while (_pending != kNoJob && !shouldQuit()) waitFrame();
 	for (int radius = 2, increment = 1; radius <= 128 && !shouldQuit(); increment += 2) {
+		waitUntil(timings[step].begin);
 		Startup::ring(_renderer.screen, _renderer.backup, radius, false);
-		if (visible) {
-			const uint32 deadline = 518 * ++step / 12;
-			while (!shouldQuit() && millis() - start < deadline) {
-				pumpFrames();
-				delay(1);
-			}
-		}
+		waitUntil(timings[step].end);
 		Startup::ring(_renderer.screen, _renderer.backup, radius, true);
 		pumpFrames();
+		++step;
 		radius += increment;
 	}
-	if (visible) debug(1, "cblood: planet ring completed in %u ms", millis() - start);
+	debug(1, "cblood: %s ring completed in %u ms", planetEntry ? "planet" : "selector", millis() - start);
 }
 
 void ScreenController::waitForDraw() {

@@ -92,6 +92,8 @@ bool StartupScreen::runStartup() {
 		    _resources.readU16(descriptor + 2) + 19 * 160 + 24 > 32000)
 			return false;
 	}
+	// The first cover waits 33 VBLs; subsequent publications wait one.
+	_coverWait = 32;
 	_panel.updateButtons(0);
 	if (_host.shouldQuit()) return false;
 	debug(1, "cblood: initial cover publications complete");
@@ -202,6 +204,14 @@ bool StartupScreen::initPlanets() {
 	do {
 		_state.gameStartMillis = _host.playTime();
 		_panel.resetClock();
+		// IKBD clock-reset command: 1,310,952 cycles at 8,021,247 Hz.
+		const uint32 clockResetStart = _host.millis();
+		while (!_host.shouldQuit() && _host.millis() - clockResetStart < 164) {
+			_host.pumpFrames();
+			_host.delay(1);
+		}
+		if (_host.shouldQuit()) return false;
+		debug(1, "cblood: startup clock reset completed in %u ms", _host.millis() - clockResetStart);
 		_panel.revealFrame = 0;
 		int sampled;
 		do {
@@ -228,6 +238,10 @@ bool StartupScreen::initPlanets() {
 	return !_host.shouldQuit();
 }
 void StartupScreen::tickFrame() {
+		if (_coverWait > 0) {
+			--_coverWait;
+			return;
+		}
 		int actions = _intro.tick();
 		if (actions & 2)
 			_selectedImage = (_intro.selector & 0x80) ? 2 : _intro.selector ? 1 : 0;
