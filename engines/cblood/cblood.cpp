@@ -21,6 +21,7 @@
 #include "cblood/cblood.h"
 #include "cblood/screen_controller.h"
 #include "engines/util.h"
+#include "common/config-manager.h"
 namespace CBlood {
 CBloodEngine::CBloodEngine(OSystem *syst, const ADGameDescription *desc)
 	: Engine(syst), _sound(*_mixer, _resources), _renderer(*syst),
@@ -30,6 +31,8 @@ bool CBloodEngine::hasFeature(EngineFeature f) const {
 	return f == kSupportsReturnToLauncher;
 }
 Common::Error CBloodEngine::run() {
+	ConfMan.registerDefault("simulate_protection_failure", false);
+	_state.setProtectionFailure(ConfMan.getBool("simulate_protection_failure"));
 	initGraphics(320, 200);
 	if (!_screens->runStartup())
 		return shouldQuit() ? Common::kNoError : Common::kReadingFailed;

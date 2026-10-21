@@ -23,11 +23,16 @@
 #include "common/array.h"
 #include "common/random.h"
 #include "cblood/startup.h"
+#include "cblood/hand_motion.h"
 namespace CBlood {
 struct GameState {
 	GameState();
 	uint16 gameClock(uint32 playTime) const;
 	bool initCoordinates();
+	void setProtectionFailure(bool enabled);
+	bool protectionFailure;
+	uint16 forceHandTremor;
+	HandMotion handMotion;
 	Common::Array<byte> dialogue;
 	Startup::Language language;
 	Common::RandomSource planetRandom;

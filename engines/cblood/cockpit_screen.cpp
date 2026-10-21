@@ -26,6 +26,8 @@ namespace CBlood {
 bool CockpitScreen::open() {
 	_host.queueDraw(kRestore);
 	_renderer.splitPalette = false;
+	if (_hasReturned) _panel.pollGameClock();
+	_hasReturned = true;
 	if (_panel.revealFrame <= 57) _host.queueDraw(kOorxx);
 	_panel.updateButtons(0x21e);
 	debug(1, "cblood: returned to cockpit");
@@ -33,14 +35,20 @@ bool CockpitScreen::open() {
 }
 
 void CockpitScreen::handleInput() {
-	_panel.pollGameClock();
-	if (!(_panel.pointerButtonLatch & 2)) return;
+	if (!(_panel.pointerButtonLatch & 2)) {
+		_panel.pollGameClock();
+		return;
+	}
 	_panel.pointerButtonLatch = 0;
 	uint x = ((_panel.cursorX + 4) >> 1) & 255, y = _panel.cursorY & 255;
 	uint32 rectangle = 0x18806;
 	if ((_panel.buttonMask & 8) && x >= _resources.readU8(rectangle) &&
 	    x <= _resources.readU8(rectangle + 1) && y >= _resources.readU8(rectangle + 2) &&
-	    y <= _resources.readU8(rectangle + 3)) _host.showPlanet();
+	    y <= _resources.readU8(rectangle + 3)) {
+		_host.showPlanet();
+		return;
+	}
+	_panel.pollGameClock();
 }
 
 } // namespace CBlood

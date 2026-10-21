@@ -27,6 +27,8 @@ public:
 	using Screen::Screen;
 	bool open() override;
 	void handleInput() override;
+private:
+	bool _hasReturned = false;
 };
 } // namespace CBlood
 #endif

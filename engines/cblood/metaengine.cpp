@@ -20,12 +20,30 @@
  */
 
 #include "cblood/cblood.h"
+#include "cblood/detection.h"
+#include "common/translation.h"
 
 #include "base/plugins.h"
 #include "engines/advancedDetector.h"
 
+static const ADExtraGuiOptionsMap gameGuiOptions[] = {
+	{
+		GAMEOPTION_PROTECTION_FAILURE,
+		{
+			_s("Simulate copy-protection failure"),
+			_s("Reproduce the original failure penalties."),
+			"simulate_protection_failure",
+			false, 0, 0
+		}
+	},
+	AD_EXTRA_GUI_OPTIONS_TERMINATOR
+};
+
 class CBloodMetaEngine : public AdvancedMetaEngine<ADGameDescription> {
 public:
+	const ADExtraGuiOptionsMap *getAdvancedExtraGuiOptions() const override {
+		return gameGuiOptions;
+	}
 	const char *getName() const override {
 		return "cblood";
 	}

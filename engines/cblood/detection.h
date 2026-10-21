@@ -23,6 +23,9 @@
 #define CBLOOD_DETECTION_H
 
 #include "engines/advancedDetector.h"
+#include "common/gui_options.h"
+
+#define GAMEOPTION_PROTECTION_FAILURE GUIO_GAMEOPTIONS1
 
 namespace CBlood {
 
