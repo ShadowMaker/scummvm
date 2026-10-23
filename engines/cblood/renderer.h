@@ -25,6 +25,11 @@ class OSystem;
 namespace CBlood {
 class Renderer {
 public:
+	enum {
+		kBorderX = 48, kBorderTop = 29, kBorderBottom = 47,
+		kOutputWidth = 416, kOutputHeight = 276
+	};
+	bool showBorder;
 	explicit Renderer(OSystem &system);
 	void present();
 	void setPalette(const uint16 *colors);
@@ -40,6 +45,7 @@ public:
 	uint16 rasterRows[200][16];
 private:
 	OSystem *_system;
+	byte _borderRows[200];
 };
 } // namespace CBlood
 #endif

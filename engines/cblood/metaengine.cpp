@@ -36,6 +36,15 @@ static const ADExtraGuiOptionsMap gameGuiOptions[] = {
 			false, 0, 0
 		}
 	},
+	{
+		GAMEOPTION_BORDER,
+		{
+			_s("Show Atari ST border"),
+			_s("Show the original screen border."),
+			"show_border",
+			true, 0, 0
+		}
+	},
 	AD_EXTRA_GUI_OPTIONS_TERMINATOR
 };
 

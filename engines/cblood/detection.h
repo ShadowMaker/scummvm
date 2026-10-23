@@ -26,6 +26,7 @@
 #include "common/gui_options.h"
 
 #define GAMEOPTION_PROTECTION_FAILURE GUIO_GAMEOPTIONS1
+#define GAMEOPTION_BORDER GUIO_GAMEOPTIONS2
 
 namespace CBlood {
 
