@@ -26,8 +26,8 @@ namespace CBlood {
 class Renderer {
 public:
 	enum {
-		kBorderX = 48, kBorderTop = 29, kBorderBottom = 47,
-		kOutputWidth = 416, kOutputHeight = 276
+		kBorderX = 48, kBorderTop = 30,
+		kOutputWidth = 416, kOutputHeight = 260
 	};
 	bool showBorder;
 	explicit Renderer(OSystem &system);

@@ -28,6 +28,10 @@ CBloodEngine::CBloodEngine(OSystem *syst, const ADGameDescription *desc)
 	_screens(new ScreenController(*this, *syst, *_eventMan, _state, _resources, _renderer, _sound)) {}
 CBloodEngine::~CBloodEngine() {}
 bool CBloodEngine::hasFeature(EngineFeature f) const {
+#ifdef SCUMMVM_HAS_EXTENDED_ASPECT_RATIO
+	if (f == kSupportsExtendedAspectRatio)
+		return true;
+#endif
 	return f == kSupportsReturnToLauncher;
 }
 Common::Error CBloodEngine::run() {
