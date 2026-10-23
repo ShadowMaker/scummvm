@@ -141,7 +141,7 @@ void ScreenController::executeDraw() {
 	}
 }
 void ScreenController::tickFrame() {
-	_panel.tickClock();
+	if (!_planet.paletteFrame()) _panel.tickClock();
 	if (_startup.introActive()) {
 		_startup.tickFrame();
 	} else {

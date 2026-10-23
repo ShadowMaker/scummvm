@@ -98,7 +98,14 @@ inline uint16 initPoints(byte *records, uint32 &seed) {
 	return count;
 }
 
-inline void projectPoints(byte *screen, byte *records, byte *context, uint32 &seed) {
+inline int16 shiftPoint(int16 value, uint count) {
+	count &= 63;
+	return value >> (count < 16 ? count : 15);
+}
+
+inline uint16 projectPoints(byte *screen, byte *records, byte *context, uint32 &seed,
+	uint32 reseedShifts = 2) {
+	uint16 lastWord = 0;
 	uint16 count = READ_BE_UINT16(context + 26), step = READ_BE_UINT16(context + 22);
 	for (int i = 0; i <= count; ++i) {
 		byte *record = records + i * 12;
@@ -108,8 +115,9 @@ inline void projectPoints(byte *screen, byte *records, byte *context, uint32 &se
 			WRITE_BE_UINT16(old + plane * 2, READ_BE_UINT16(old + plane * 2) & ~mask);
 		uint16 depth = READ_BE_UINT16(record + 8);
 		if (depth & 0x8000) {
-			WRITE_BE_UINT16(record + 4, nextRandom(seed));
-			WRITE_BE_UINT16(record + 6, int16(nextRandom(seed)) >> 2);
+			WRITE_BE_UINT16(record + 4, shiftPoint(int16(nextRandom(seed)), reseedShifts >> 16));
+			WRITE_BE_UINT16(record + 6, shiftPoint(int16(nextRandom(seed)), reseedShifts));
+			lastWord = uint16(((seed & 65535) * 0xbb40) >> 16);
 			WRITE_BE_UINT16(record + 8, (nextRandom(seed) & 0xfff) | 0x1800);
 			continue;
 		}
@@ -118,6 +126,7 @@ inline void projectPoints(byte *screen, byte *records, byte *context, uint32 &se
 		context[3] = color < 0x90 ? 0x90 : color;
 		int16 scale = int16(0xfffff / (depth + 16));
 		int16 x = int16((int16(READ_BE_UINT16(record + 4)) * int32(scale) >> 16) + 160);
+		lastWord = uint16(x);
 		int16 y = int16((int16(READ_BE_UINT16(record + 6)) * int32(scale) >> 16) + 80);
 		if (x < 0 || x >= 319 || y <= 18 || y > 143) {
 			WRITE_BE_UINT16(record + 8, 0);
@@ -134,6 +143,7 @@ inline void projectPoints(byte *screen, byte *records, byte *context, uint32 &se
 		WRITE_BE_UINT16(record, mask);
 		WRITE_BE_UINT16(record + 2, offset);
 	}
+	return lastWord;
 }
 
 template<class Checkpoint>

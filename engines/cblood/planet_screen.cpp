@@ -26,11 +26,17 @@ namespace CBlood {
 PlanetScreen::PlanetScreen(ScreenController &host, GameState &state, Resources &resources,
 	Renderer &renderer, CockpitPanel &panel, Sound &sound)
 	: Screen(host, state, resources, renderer, panel, sound),
+	_destroyQueued(false), _emptyView(false), _paletteActive(false),
 	_renderPoint(0), _planetFrames(0), _planetActive(false) {
 	memset(_terrain, 0, sizeof(_terrain));
 	memset(_packedPlanet, 0, sizeof(_packedPlanet));
 }
 void PlanetScreen::initData() {
+	_state.oorxxVisitScan = _resources.readU16(0x16d5e);
+	_resources.readResource(0x1d242, _rasterColors, sizeof(_rasterColors));
+	_state.destroyedCount = _resources.readU16(0x16b52);
+	_state.destroyWriteOffset = _resources.readU16(0x16d5c);
+	_resources.readResource(0x16c5c, _state.destroyedCoords, sizeof(_state.destroyedCoords));
 	_resources.readResource(0x1ac36, _planetState, sizeof(_planetState));
 	_resources.readResource(0x180a2, _planetColors, sizeof(_planetColors));
 	_resources.readResource(0x1db46, _depthPoints, sizeof(_depthPoints));
@@ -42,6 +48,7 @@ void PlanetScreen::setPlanet(uint16 coordinate) {
 	WRITE_BE_UINT16(_planetState + 26, coordinate);
 }
 bool PlanetScreen::open() {
+	_emptyView = _destroyQueued = false;
 	_panel.cursorYClamp = 50;
 	_panel.updateButtons(0x1c0);
 	_host.showRing(true);
@@ -63,6 +70,14 @@ bool PlanetScreen::open() {
 	_sound.startSpeech(0x1d016);
 	_panel.cursorYClamp = 109;
 	_panel.pointerButton = _panel.pointerButtonLatch = 0;
+	if (_planetState[24] & 0x80) {
+		_panel.updateButtons(0);
+		_panel.cursorYClamp = 104;
+		_emptyView = true;
+		_planetActive = false;
+		debug(1, "cblood: destroyed planet view, awaiting click");
+		return !_host.shouldQuit();
+	}
 	WRITE_BE_UINT16(_planetState + 28, 40);
 	Planet::curve(_planetState + 28);
 	_host.waitForDraw();
@@ -94,7 +109,17 @@ void PlanetScreen::update(uint32 now) {
 				_planetActive = false;
 				_host.requestCockpit();
 			} else {
-				warning("cblood: planet action controls are outside the startup implementation");
+				const uint x = ((_panel.cursorX + 4) >> 1) & 255;
+				const uint y = _panel.cursorY & 255;
+				const uint32 control = 0x18826;
+				if ((_panel.buttonMask & 0x80) && x >= _resources.readU8(control) &&
+				    x <= _resources.readU8(control + 1) && y >= _resources.readU8(control + 2) &&
+				    y <= _resources.readU8(control + 3)) {
+					_planetActive = false;
+					_destroyQueued = true;
+				} else {
+					warning("cblood: this planet action is not implemented");
+				}
 			}
 		}
 	}

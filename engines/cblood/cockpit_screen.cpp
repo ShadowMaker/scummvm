@@ -28,13 +28,21 @@ bool CockpitScreen::open() {
 	_renderer.splitPalette = false;
 	if (_hasReturned) _panel.pollGameClock();
 	_hasReturned = true;
-	if (_panel.revealFrame <= 57) _host.queueDraw(kOorxx);
+	_revealActive = _panel.revealFrame <= 57;
+	if (_revealActive) _host.queueDraw(kOorxx);
 	_panel.updateButtons(0x21e);
 	debug(1, "cblood: returned to cockpit");
 	return !_host.shouldQuit();
 }
 
 void CockpitScreen::handleInput() {
+	if (_revealActive) {
+		_host.waitForDraw();
+		if (_panel.revealFrame < 59) _host.queueDraw(kOorxx);
+		else _revealActive = false;
+	}
+
+	_panel.updateButtons(0x21e);
 	if (!(_panel.pointerButtonLatch & 2)) {
 		_panel.pollGameClock();
 		return;

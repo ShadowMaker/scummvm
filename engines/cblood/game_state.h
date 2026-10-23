@@ -29,6 +29,7 @@ struct GameState {
 	GameState();
 	uint16 gameClock(uint32 playTime) const;
 	bool initCoordinates();
+	bool destroyPlanet();
 	void setProtectionFailure(bool enabled);
 	bool protectionFailure;
 	uint16 forceHandTremor;
@@ -37,6 +38,9 @@ struct GameState {
 	Startup::Language language;
 	Common::RandomSource planetRandom;
 	byte alienPlanets[256];
+	byte destroyedCoords[256];
+	uint16 destroyedCount, destroyWriteOffset;
+	uint16 oorxxVisitScan;
 	uint16 currentPlanet, alienOffset, alienState, bloodDeadline;
 	uint32 localSeed, gameStartMillis;
 };
