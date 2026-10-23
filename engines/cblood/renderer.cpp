@@ -24,7 +24,7 @@
 #include "graphics/paletteman.h"
 #include "common/textconsole.h"
 namespace CBlood {
-Renderer::Renderer(OSystem &system) : shownImage(0), splitPalette(false), rasterActive(false), _system(&system) {
+Renderer::Renderer(OSystem &system) : showBorder(true), shownImage(0), splitPalette(false), rasterActive(false), _system(&system) {
 	memset(rasterRows, 0, sizeof(rasterRows));
 	memset(screen, 0, sizeof(screen));
 	memset(creature, 0, sizeof(creature));
@@ -36,11 +36,26 @@ Renderer::Renderer(OSystem &system) : shownImage(0), splitPalette(false), raster
 void Renderer::present() {
 	byte pixels[64000];
 	decodeScreen(shownImage == 1 ? creature : screen, pixels);
+	for (int y = 0; y < 200; ++y)
+		_borderRows[y] = splitPalette && y >= 18 && y < 144 ? 16 : 0;
 	if (rasterActive)
 		presentRaster(pixels);
 	else if (splitPalette)
 		for (int i = 18 * 320; i < 144 * 320; ++i) pixels[i] |= 16;
-	_system->copyRectToScreen(pixels, 320, 0, 0, 320, 200);
+	if (showBorder) {
+		byte output[kOutputWidth * kOutputHeight];
+		memset(output, _borderRows[0], kOutputWidth * kBorderTop);
+		for (int y = 0; y < 200; ++y) {
+			byte *row = output + (y + kBorderTop) * kOutputWidth;
+			memset(row, _borderRows[y], kOutputWidth);
+			memcpy(row + kBorderX, pixels + y * 320, 320);
+		}
+		memset(output + (kBorderTop + 200) * kOutputWidth,
+		       _borderRows[199], kOutputWidth * kBorderBottom);
+		_system->copyRectToScreen(output, kOutputWidth, 0, 0, kOutputWidth, kOutputHeight);
+	} else {
+		_system->copyRectToScreen(pixels, 320, 0, 0, 320, 200);
+	}
 	_system->updateScreen();
 }
 
@@ -69,6 +84,7 @@ void Renderer::presentRaster(byte *pixels) {
 			}
 			mapping[entry] = byte(indices[color]);
 		}
+		_borderRows[row] = mapping[0];
 		for (int x = 0; x < 320; ++x) pixels[row * 320 + x] = mapping[pixels[row * 320 + x]];
 	}
 	_system->getPaletteManager()->setPalette(rgb, 0, count);

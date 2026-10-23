@@ -33,7 +33,10 @@ bool CBloodEngine::hasFeature(EngineFeature f) const {
 Common::Error CBloodEngine::run() {
 	ConfMan.registerDefault("simulate_protection_failure", false);
 	_state.setProtectionFailure(ConfMan.getBool("simulate_protection_failure"));
-	initGraphics(320, 200);
+	ConfMan.registerDefault("show_border", true);
+	_renderer.showBorder = ConfMan.getBool("show_border");
+	initGraphics(_renderer.showBorder ? Renderer::kOutputWidth : 320,
+	             _renderer.showBorder ? Renderer::kOutputHeight : 200);
 	if (!_screens->runStartup())
 		return shouldQuit() ? Common::kNoError : Common::kReadingFailed;
 	while (!shouldQuit()) {
