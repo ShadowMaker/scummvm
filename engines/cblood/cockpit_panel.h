@@ -48,6 +48,7 @@ private:
 	Renderer &_renderer;
 	uint16 handAnimation;
 	int oldHandHeight, oldHandDest, _handTop;
+	int _mouseYFraction = 0;
 	byte savedHand[2664], clockDigits[10];
 	uint16 shownClock, clockReply;
 	bool clockReplyReady;

@@ -35,8 +35,9 @@ Common::Error CBloodEngine::run() {
 	_state.setProtectionFailure(ConfMan.getBool("simulate_protection_failure"));
 	ConfMan.registerDefault("show_border", true);
 	_renderer.showBorder = ConfMan.getBool("show_border");
+	_renderer.correctAspect = ConfMan.getBool("aspect_ratio");
 	initGraphics(_renderer.showBorder ? Renderer::kOutputWidth : 320,
-	             _renderer.showBorder ? Renderer::kOutputHeight : 200);
+	             _renderer.outputHeight());
 	if (!_screens->runStartup())
 		return shouldQuit() ? Common::kNoError : Common::kReadingFailed;
 	while (!shouldQuit()) {

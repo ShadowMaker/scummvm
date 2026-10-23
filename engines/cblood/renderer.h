@@ -26,10 +26,21 @@ namespace CBlood {
 class Renderer {
 public:
 	enum {
-		kBorderX = 48, kBorderTop = 29, kBorderBottom = 47,
-		kOutputWidth = 416, kOutputHeight = 276
+		kBorderX = 48, kBorderTop = 30,
+		kOutputWidth = 416, kOutputHeight = 260, kAspectHeight = 312
 	};
 	bool showBorder;
+	bool correctAspect = false;
+	bool stretchBorder() const {
+#ifdef USE_ASPECT
+		return showBorder && correctAspect;
+#else
+		return false;
+#endif
+	}
+	int outputHeight() const {
+		return showBorder ? (stretchBorder() ? kAspectHeight : kOutputHeight) : 200;
+	}
 	explicit Renderer(OSystem &system);
 	void present();
 	void setPalette(const uint16 *colors);
@@ -46,6 +57,7 @@ public:
 private:
 	OSystem *_system;
 	byte _borderRows[200];
+	byte _borderPixels[kOutputWidth * kAspectHeight];
 };
 } // namespace CBlood
 #endif

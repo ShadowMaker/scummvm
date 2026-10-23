@@ -83,7 +83,17 @@ void CockpitPanel::handleEvent(const Common::Event &event) {
 	byte buttons = pointerButton;
 	int dx = 0, dy = 0;
 	switch (event.type) {
-	case Common::EVENT_MOUSEMOVE: dx = event.relMouse.x; dy = -event.relMouse.y; break;
+	case Common::EVENT_MOUSEMOVE:
+		dx = event.relMouse.x;
+		dy = -event.relMouse.y;
+		if (_renderer.stretchBorder()) {
+			int scaled = dy * 5 + _mouseYFraction;
+			dy = scaled / 6;
+			_mouseYFraction = scaled % 6;
+		} else {
+			_mouseYFraction = 0;
+		}
+		break;
 	case Common::EVENT_LBUTTONDOWN: buttons |= 2; break;
 	case Common::EVENT_LBUTTONUP: buttons &= ~2; break;
 	case Common::EVENT_RBUTTONDOWN: buttons |= 1; break;
