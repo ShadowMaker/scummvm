@@ -29,11 +29,15 @@ public:
 	void present();
 	void setPalette(const uint16 *colors);
 	void setPlanetPalette(const byte *colors);
+	void clearRasterPalette();
+	void presentRaster(byte *pixels);
 	void decodeScreen(const byte *src, byte *dst) const;
 	byte screen[32768], creature[32000], cockpit[32000], backup[32000];
 	uint16 palettes[4][16], currentPalette[16];
 	int shownImage;
 	bool splitPalette;
+	bool rasterActive;
+	uint16 rasterRows[200][16];
 private:
 	OSystem *_system;
 };

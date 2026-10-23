@@ -11,6 +11,7 @@ MODULE_OBJS := \
 	cockpit_panel.o \
 	cockpit_screen.o \
 	planet_screen.o \
+	planet_destruction.o \
 	startup_screen.o
 
 MODULE_DIRS += \

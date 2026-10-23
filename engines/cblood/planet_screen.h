@@ -22,6 +22,7 @@
 #define CBLOOD_PLANET_SCREEN_H
 #include "cblood/screen.h"
 #include "cblood/planet.h"
+#include "cblood/destruction.h"
 namespace CBlood {
 class PlanetScreen : public Screen {
 public:
@@ -30,10 +31,22 @@ public:
 	void initData();
 	void setPlanet(uint16 coordinate);
 	bool open() override;
-	void close() override { _planetActive = false; }
+	void close() override;
+	void handleInput() override;
+	bool paletteFrame();
 	void update(uint32 now) override;
 	void render() override;
 private:
+	void runDestruction();
+	void advancePalette();
+	void waitDestruct(uint32 start, uint32 cycles);
+	uint16 waitPoints(uint phase);
+	void makeDestructImage(byte *image, byte *field, byte *pattern, uint16 midpoint, uint phase);
+	void finishPlanetView();
+	PaletteRaster _raster;
+	uint32 _paletteEpoch, _paletteFrames;
+	byte _rasterColors[2048], _rasterDelays[40];
+	bool _destroyQueued, _emptyView, _paletteActive;
 	byte _planetState[124], _planetColors[64];
 	byte _terrain[0x4145], _packedPlanet[4944], _depthPoints[3072], _depthState[28];
 	uint _renderPoint, _planetFrames;

@@ -29,6 +29,7 @@ public:
 	void handleInput() override;
 private:
 	bool _hasReturned = false;
+	bool _revealActive = false;
 };
 } // namespace CBlood
 #endif
