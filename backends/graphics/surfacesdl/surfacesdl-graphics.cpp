@@ -40,6 +40,7 @@
 #include "graphics/scaler.h"
 #include "graphics/scaler/aspect.h"
 #include "graphics/surface.h"
+#include "engines/engine.h"
 #include "gui/debugger.h"
 #include "gui/EventRecorder.h"
 #ifdef USE_PNG
@@ -831,7 +832,10 @@ void SurfaceSdlGraphicsManager::initSize(uint w, uint h, const Graphics::PixelFo
 		if (scaleFactor == -1)
 			scaleFactor = getDefaultScaleFactor();
 		int mode = _videoMode.scalerIndex;
-		if (useDefault && w > 320) {
+		const bool borderedLowRes = g_engine && g_engine->hasFeature(Engine::kSupportsExtendedAspectRatio) &&
+			w < 640 && w * 5 == h * 8;
+		// Borders do not turn a low-resolution game into a high-resolution game.
+		if (useDefault && w > 320 && !borderedLowRes) {
 			// The default scaler is assumed to be for low
 			// resolution games. For high resolution games, pick
 			// the largest scale factor that gives at most the
@@ -929,7 +933,9 @@ void SurfaceSdlGraphicsManager::setupHardwareSize() {
 	_videoMode.overlayWidth = _videoMode.screenWidth * _videoMode.scaleFactor;
 	_videoMode.overlayHeight = _videoMode.screenHeight * _videoMode.scaleFactor;
 
-	if (_videoMode.screenHeight != 200 && _videoMode.screenHeight != 400)
+	const bool extendedAspect = g_engine && g_engine->hasFeature(Engine::kSupportsExtendedAspectRatio) &&
+		_videoMode.screenWidth * 5 == _videoMode.screenHeight * 8;
+	if (_videoMode.screenHeight != 200 && _videoMode.screenHeight != 400 && !extendedAspect)
 		_videoMode.aspectRatioCorrection = false;
 
 	_videoMode.hardwareWidth = _videoMode.screenWidth * _videoMode.scaleFactor;

@@ -22,6 +22,8 @@
 #ifndef ENGINES_ENGINE_H
 #define ENGINES_ENGINE_H
 
+#define SCUMMVM_HAS_EXTENDED_ASPECT_RATIO 1
+
 #include "common/array.h"
 #include "common/error.h"
 #include "common/rect.h"
@@ -342,6 +344,9 @@ public:
 		 * The engine provides overrides to the quit and exit to launcher dialogs.
 		 */
 		kSupportsQuitDialogOverride,
+
+		/** Allow optional 6:5 aspect correction for nonstandard 8:5 framebuffers. */
+		kSupportsExtendedAspectRatio,
 	};
 
 

@@ -29,6 +29,7 @@
 #include "common/fs.h"
 #include "common/textconsole.h"
 #include "common/translation.h"
+#include "engines/engine.h"
 #include "graphics/scaler/aspect.h"
 #ifdef USE_OSD
 #include "common/translation.h"
@@ -198,17 +199,19 @@ void SdlGraphicsManager::initSizeHint(const Graphics::ModeList &modes) {
 	const Graphics::ModeList::const_iterator end = modes.end();
 	for (Graphics::ModeList::const_iterator it = modes.begin(); it != end; ++it) {
 		int16 width = it->width, height = it->height;
+		const bool extendedAspect = g_engine && g_engine->hasFeature(Engine::kSupportsExtendedAspectRatio) &&
+			width * 5 == height * 8;
 
 		// TODO: Normalize AR correction by passing a PAR in the mode list
 		// instead of checking the dimensions here like this, since not all
 		// 320x200/640x400 uses are with non-square pixels (e.g. DreamWeb).
 		if (ConfMan.getBool("aspect_ratio")) {
-			if ((width == 320 && height == 200) || (width == 640 && height == 400)) {
+			if ((width == 320 && height == 200) || (width == 640 && height == 400) || extendedAspect) {
 				height = real2Aspect(height);
 			}
 		}
 
-		if (!useDefault || width <= 320) {
+		if (!useDefault || width <= 320 || (extendedAspect && width < 640)) {
 			width *= scale;
 			height *= scale;
 		}

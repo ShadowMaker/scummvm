@@ -1837,12 +1837,12 @@ bool OpenGLGraphicsManager::gameNeedsAspectRatioCorrection() const {
 		const uint width = getWidth();
 		const uint height = getHeight();
 
-		// In case we enable aspect ratio correction we force a 4/3 ratio.
-		// But just for 320x200, 640x400, 640x350 (16 color EGA) and Hercules games, since other
-		// games do not need this.
+		// Preserve legacy modes; engines with bordered 8:5 screens may also opt in.
+		const bool extendedAspect = g_engine && g_engine->hasFeature(Engine::kSupportsExtendedAspectRatio) &&
+			width * 5 == height * 8;
 		return (width == 320 && height == 200) || (width == 640 && height == 400) ||
 			   (width == 640 && height == 350) ||
-		       (width == 720 && height == 348) || (width == 720 && height == 350);
+		       (width == 720 && height == 348) || (width == 720 && height == 350) || extendedAspect;
 	}
 
 	return false;
