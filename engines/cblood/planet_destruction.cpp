@@ -195,19 +195,21 @@ void PlanetScreen::runDestruction() {
 }
 
 void PlanetScreen::finishPlanetView() {
-	_panel.revealFrame = 0;
+	if (_emptyView) _panel.revealFrame = 0;
 	_panel.pointerButtonLatch = 0;
-	const uint32 descriptor = 0x17ec0;
-	uint source = _resources.readU32(descriptor) - 0x58000;
-	uint destination = _resources.readU32(descriptor + 4) - 0x68000 + 0x960;
-	uint bytes = (_resources.readU16(descriptor + 8) + 1) * 8;
-	uint rows = _resources.readU16(descriptor + 10) + 1;
-	for (uint row = 0; row < rows; ++row) {
-		if (source + bytes > _resources.bloodM.size() || destination + bytes > sizeof(_renderer.backup))
-			error("CBlood: invalid cockpit return patch");
-		memcpy(_renderer.backup + destination, &_resources.bloodM[source], bytes);
-		source += bytes + _resources.readS16(descriptor + 12);
-		destination += bytes + _resources.readS16(descriptor + 14);
+	if (!_panel.revealFrame) {
+		const uint32 descriptor = 0x17ec0;
+		uint source = _resources.readU32(descriptor) - 0x58000;
+		uint destination = _resources.readU32(descriptor + 4) - 0x68000 + 0x960;
+		uint bytes = (_resources.readU16(descriptor + 8) + 1) * 8;
+		uint rows = _resources.readU16(descriptor + 10) + 1;
+		for (uint row = 0; row < rows; ++row) {
+			if (source + bytes > _resources.bloodM.size() || destination + bytes > sizeof(_renderer.backup))
+				error("CBlood: invalid cockpit return patch");
+			memcpy(_renderer.backup + destination, &_resources.bloodM[source], bytes);
+			source += bytes + _resources.readS16(descriptor + 12);
+			destination += bytes + _resources.readS16(descriptor + 14);
+		}
 	}
 	_emptyView = false;
 	_host.requestCockpit();

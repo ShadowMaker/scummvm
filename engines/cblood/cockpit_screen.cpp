@@ -28,8 +28,8 @@ bool CockpitScreen::open() {
 	_renderer.splitPalette = false;
 	if (_hasReturned) _panel.pollGameClock();
 	_hasReturned = true;
-	_revealActive = _panel.revealFrame <= 57;
-	if (_revealActive) _host.queueDraw(kOorxx);
+	_revealActive = _panel.revealFrame < 57;
+	if (_panel.revealFrame <= 57) _host.queueDraw(kOorxx);
 	_panel.updateButtons(0x21e);
 	debug(1, "cblood: returned to cockpit");
 	return !_host.shouldQuit();
@@ -54,6 +54,13 @@ void CockpitScreen::handleInput() {
 	    x <= _resources.readU8(rectangle + 1) && y >= _resources.readU8(rectangle + 2) &&
 	    y <= _resources.readU8(rectangle + 3)) {
 		_host.showPlanet();
+		return;
+	}
+	rectangle = 0x1880e;
+	if ((_panel.buttonMask & 0x10) && x >= _resources.readU8(rectangle) &&
+	    x <= _resources.readU8(rectangle + 1) && y >= _resources.readU8(rectangle + 2) &&
+	    y <= _resources.readU8(rectangle + 3)) {
+		_host.requestMap();
 		return;
 	}
 	_panel.pollGameClock();

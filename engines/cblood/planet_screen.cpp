@@ -32,26 +32,44 @@ PlanetScreen::PlanetScreen(ScreenController &host, GameState &state, Resources &
 	memset(_packedPlanet, 0, sizeof(_packedPlanet));
 }
 void PlanetScreen::initData() {
+	_raster = {_resources.readU16(0x1a2dc), _resources.readU16(0x1a2de), _resources.readU16(0x1a2e0), _resources.readU16(0x1a2e2)};
 	_state.oorxxVisitScan = _resources.readU16(0x16d5e);
 	_resources.readResource(0x1d242, _rasterColors, sizeof(_rasterColors));
 	_state.destroyedCount = _resources.readU16(0x16b52);
 	_state.destroyWriteOffset = _resources.readU16(0x16d5c);
 	_resources.readResource(0x16c5c, _state.destroyedCoords, sizeof(_state.destroyedCoords));
+	_resources.readResource(0x16d62, _state.visitedPlanets, sizeof(_state.visitedPlanets));
 	_resources.readResource(0x1ac36, _planetState, sizeof(_planetState));
 	_resources.readResource(0x180a2, _planetColors, sizeof(_planetColors));
 	_resources.readResource(0x1db46, _depthPoints, sizeof(_depthPoints));
 	_resources.readResource(0x19df0, _depthState, sizeof(_depthState));
 }
 void PlanetScreen::setPlanet(uint16 coordinate) {
+	_state.mapPlanet = coordinate;
 	WRITE_BE_UINT16(_planetState, coordinate);
 	_planetState[24] &= 0x7f;
 	WRITE_BE_UINT16(_planetState + 26, coordinate);
 }
 bool PlanetScreen::open() {
 	_emptyView = _destroyQueued = false;
+	const bool fromMap = _fromMap;
+	_fromMap = false;
+	if (fromMap) _host.queueDraw(kRestore);
 	_panel.cursorYClamp = 50;
 	_panel.updateButtons(0x1c0);
-	_host.showRing(true);
+	if (fromMap) {
+		_state.currentPlanet = _state.mapPlanet;
+		_host.waitForDraw();
+		Planet::formatDigits(_panel.digits, byte(_state.currentPlanet));
+		Planet::formatDigits(_panel.digits + 6, byte(_state.currentPlanet >> 8) & 127);
+		_host.queueDraw(kDigits);
+		_planetState[24] &= 0x7f;
+		WRITE_BE_UINT16(_planetState + 26, _state.currentPlanet);
+		if (_state.resolvePlanet()) _planetState[24] |= 0x80;
+		debug(1, "cblood: map planet view %u,%u, alien=%d", byte(_state.currentPlanet), byte(_state.currentPlanet >> 8), int16(_state.alienOffset));
+	} else {
+		_host.showRing(true);
+	}
 	if (_host.shouldQuit()) return false;
 	memset(_renderer.screen + 18 * 160, 0, 128 * 160);
 	_panel.revealFrame = 57;
@@ -107,7 +125,7 @@ void PlanetScreen::update(uint32 now) {
 			_panel.pointerButtonLatch &= ~2;
 			if (_panel.cursorX <= 170) {
 				_planetActive = false;
-				_host.requestCockpit();
+				finishPlanetView();
 			} else {
 				const uint x = ((_panel.cursorX + 4) >> 1) & 255;
 				const uint y = _panel.cursorY & 255;

@@ -19,6 +19,8 @@
  *
  */
 #include "cblood/screen_controller.h"
+#include "backends/keymapper/keymapper.h"
+#include "backends/keymapper/keymap.h"
 #include "cblood/ring_timing.h"
 #include "common/debug.h"
 #include "common/system.h"
@@ -31,6 +33,7 @@ ScreenController::ScreenController(CBloodEngine &engine, OSystem &system, Common
 	_panel(*this, state, resources, renderer),
 	_cockpit(*this, state, resources, renderer, _panel, sound),
 	_planet(*this, state, resources, renderer, _panel, sound),
+	_map(*this, state, resources, renderer, _panel, sound),
 	_startup(*this, state, resources, renderer, _panel, sound, _planet),
 	_active(nullptr), _nextScreen(nullptr), _clockActive(false), _nextFrame(0),
 	_pending(kNoJob), _pendingButton(0) {}
@@ -44,6 +47,10 @@ uint32 ScreenController::playTime() const { return _engine.getTotalPlayTime(); }
 void ScreenController::delay(uint32 milliseconds) { _system.delayMillis(milliseconds); }
 void ScreenController::lockMouse(bool lock) { _system.lockMouse(lock); }
 void ScreenController::purgeKeys() { _events.purgeKeyboardEvents(); }
+void ScreenController::enableKeymap(const char *id, bool enabled) {
+	Common::Keymap *keymap = _events.getKeymapper()->getKeymap(id);
+	if (keymap) keymap->setEnabled(enabled);
+}
 void ScreenController::startFrames() { _clockActive = true; resyncFrame(); }
 void ScreenController::resyncFrame() { _nextFrame = millis() + 20; }
 bool ScreenController::serviceLoading() { pumpFrames(); return !shouldQuit(); }
@@ -87,6 +94,7 @@ void ScreenController::pumpFrames() {
 }
 
 void ScreenController::waitFrame() {
+	if (_map.ownsFrames()) return;
 	uint32 next = _nextFrame;
 	do {
 		pumpFrames();
@@ -135,22 +143,30 @@ void ScreenController::executeDraw() {
 	_pending = kNoJob;
 	if (job == kPlanet) {
 		_planet.render();
+	} else if (job == kMap) {
+		_map.render();
 	} else {
 		_panel.draw(job, _pendingButton);
 		if (job == kOorxx) ++_panel.revealFrame;
 	}
 }
 void ScreenController::tickFrame() {
+	if (_map.ownsFrames()) return;
 	if (!_planet.paletteFrame()) _panel.tickClock();
 	if (_startup.introActive()) {
 		_startup.tickFrame();
 	} else {
-		if (_panel.handActive) _panel.restoreHand();
-		executeDraw();
-		if (_panel.handActive) {
-			_panel.updateHand();
-			_panel.drawHand();
-		}
+		drawHandFrame();
+		return;
+	}
+	_renderer.present();
+}
+void ScreenController::drawHandFrame() {
+	if (_panel.handActive) _panel.restoreHand();
+	executeDraw();
+	if (_panel.handActive) {
+		_panel.updateHand();
+		_panel.drawHand();
 	}
 	_renderer.present();
 }

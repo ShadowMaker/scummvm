@@ -10,6 +10,7 @@ MODULE_OBJS := \
 	screen_controller.o \
 	cockpit_panel.o \
 	cockpit_screen.o \
+	galaxy_map_screen.o \
 	planet_screen.o \
 	planet_destruction.o \
 	startup_screen.o

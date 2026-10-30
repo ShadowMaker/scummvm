@@ -19,6 +19,7 @@
  *
  */
 #include "cblood/screen_controller.h"
+#include "cblood/input.h"
 #include "common/debug.h"
 #include "common/system.h"
 
@@ -31,7 +32,8 @@ bool StartupScreen::loadFile(const char *name, Common::Array<byte> &data) {
 	return _resources.loadFile(name, data, _host);
 }
 void StartupScreen::handleEvent(const Common::Event &event) {
-	if (event.type == Common::EVENT_KEYDOWN) _keyPressed = true;
+	if (event.type == Common::EVENT_CUSTOM_ENGINE_ACTION_START && event.customType == kContinue)
+		_keyPressed = true;
 }
 void StartupScreen::pollMusic() {
 	if (_introActive && !_markerSeen && _sound.introMarkerReached()) {
@@ -40,6 +42,7 @@ void StartupScreen::pollMusic() {
 	}
 }
 bool StartupScreen::runStartup() {
+	_host.enableKeymap("cblood-intro", true);
 	Common::Array<byte> images;
 	if (!loadFile("BLOOD_I", images) || images.size() < 64064 || !_sound.setupTitleMusic())
 		return false;
@@ -60,6 +63,7 @@ bool StartupScreen::runStartup() {
 	_host.purgeKeys();
 	debug(1, "cblood: intro key gate ready");
 	if (!runTitleLoop()) return false;
+	_host.enableKeymap("cblood-intro", false);
 	debug(1, "cblood: intro key accepted");
 	_keyPressed = false;
 	_markerSeen = true;
@@ -223,6 +227,7 @@ bool StartupScreen::initPlanets() {
 	debug(1, "cblood: initial reveal publication complete, counter=%u", _panel.revealFrame);
 	_state.currentPlanet = READ_BE_UINT16(_state.alienPlanets + _state.alienOffset);
 	_planet.setPlanet(_state.currentPlanet);
+	_state.alienRewrite = _state.alienOffset;
 	uint bit = 100 + (_state.alienOffset / 4) * 5;
 	uint offset = 0x1730 + bit / 8;
 	if (offset + 1 >= _state.dialogue.size()) return false;

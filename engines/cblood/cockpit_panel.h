@@ -38,6 +38,7 @@ public:
 	bool handActive;
 	uint16 buttonMask;
 	int cursorX, cursorY, cursorYClamp;
+	int handRows = 109;
 	byte pointerButton, pointerButtonLatch;
 	uint16 revealFrame;
 	byte digits[36];

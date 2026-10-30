@@ -113,7 +113,7 @@ void CockpitPanel::updateHand() {
 		handAnimation += 0x60;
 		top -= (handAnimation & 0x300) + 0x100;
 	}
-	oldHandHeight = MIN(y, 109);
+	oldHandHeight = MIN(y, handRows);
 	oldHandDest = (200 - y) * 160 + (cursorX & ~15) / 2;
 	_handTop = top;
 	const int rows = oldHandHeight <= 15 ? oldHandHeight + 1 : oldHandHeight + 2;

@@ -42,13 +42,53 @@ void GameState::setProtectionFailure(bool enabled) {
 	// TODO: Reject loads with negative diskScanCheck after planet restore, before restoring the remaining 940 bytes
 	// TODO: For nonzero diskScanCheck, skip the first save and retry setup. Preserve the native close/error/retry path
 	// TODO: Save deadline/forced tremor, but not diskScanCheck
-	// TODO: Block map keyboard controls during tremor
 	// TODO: Add qualifying disintegration credit to bloodDeadline
 	// TODO: Set and later clear forceHandTremor during the ending. Neither gameplay effect depends on protectionFailure
 }
 bool GameState::initCoordinates() {
 	return Planet::initCoordinates(alienPlanets, alienOffset,
 		[this]() { return planetRandom.getRandomNumber(0xffffff); });
+}
+
+bool GameState::resolvePlanet() {
+	alienOffset = oorxxVisitScan = 0xffff;
+	alienState = 0;
+	uint16 search = currentPlanet;
+	for (int offset = 252; offset >= 0; offset -= 4) {
+		uint16 coordinate = READ_BE_UINT16(alienPlanets + offset);
+		if ((coordinate & 0x7fff) != currentPlanet) continue;
+		if (coordinate & 0x8000) return true;
+		alienOffset = offset;
+		break;
+	}
+	if (int16(alienOffset) < 0) {
+		search |= 0x8000;
+		for (uint offset = 0; offset < 512; offset += 2) {
+			const byte *word = offset < 256 ? alienPlanets + offset : destroyedCoords + offset - 256;
+			if (READ_BE_UINT16(word) == search) return true;
+		}
+		if (int16(alienRewrite) >= 0) {
+			if (alienRewrite > 252 || (alienRewrite & 3)) error("CBlood: invalid alien rewrite offset");
+			search &= 0x7fff;
+			WRITE_BE_UINT16(alienPlanets + alienRewrite, search);
+			WRITE_BE_UINT16(alienPlanets + alienRewrite + 2, search);
+			alienOffset = alienRewrite;
+		}
+	}
+	if (int16(alienOffset) >= 0) {
+		if (dialogue.size() < 0x1770) error("CBlood: missing alien state");
+		const byte *bits = &dialogue[0x1730];
+		uint first = 100 + (alienOffset / 4) * 5;
+		for (uint bit = 0; bit < 5; ++bit)
+			alienState |= ((bits[(first + bit) / 8] >> ((first + bit) & 7)) & 1) << bit;
+	}
+	for (uint i = 0; i < 128; ++i) {
+		if (READ_BE_UINT16(visitedPlanets + i * 2) == search) {
+			oorxxVisitScan = 127 - i;
+			break;
+		}
+	}
+	return false;
 }
 
 bool GameState::destroyPlanet() {

@@ -21,6 +21,11 @@
 
 #include "cblood/cblood.h"
 #include "cblood/detection.h"
+#include "cblood/input.h"
+#include "backends/keymapper/action.h"
+#include "backends/keymapper/keymap.h"
+#include "backends/keymapper/standard-actions.h"
+#include "backends/keymapper/hardware-input.h"
 #include "common/translation.h"
 
 #include "base/plugins.h"
@@ -50,6 +55,7 @@ static const ADExtraGuiOptionsMap gameGuiOptions[] = {
 
 class CBloodMetaEngine : public AdvancedMetaEngine<ADGameDescription> {
 public:
+	Common::KeymapArray initKeymaps(const char *target) const override;
 	const ADExtraGuiOptionsMap *getAdvancedExtraGuiOptions() const override {
 		return gameGuiOptions;
 	}
@@ -62,6 +68,44 @@ public:
 		return Common::kNoError;
 	}
 };
+
+Common::KeymapArray CBloodMetaEngine::initKeymaps(const char *target) const {
+	using namespace Common;
+	Keymap *mouse = new Keymap(Keymap::kKeymapTypeGame, "cblood", "Captain Blood");
+	Action *action = new Action(kStandardActionLeftClick, _("Left click"));
+	action->setLeftClickEvent();
+	action->addDefaultInputMapping("MOUSE_LEFT");
+	action->addDefaultInputMapping("JOY_A");
+	mouse->addAction(action);
+	action = new Action(kStandardActionRightClick, _("Right click"));
+	action->setRightClickEvent();
+	action->addDefaultInputMapping("MOUSE_RIGHT");
+	action->addDefaultInputMapping("JOY_B");
+	mouse->addAction(action);
+	Keymap *intro = new Keymap(Keymap::kKeymapTypeGame, "cblood-intro", _("Intro"));
+	intro->setEnabled(false);
+	action = new Action("CONTINUE", _("Continue"));
+	action->setCustomEngineActionEvent(CBlood::kContinue);
+	for (const KeyTableEntry *key = defaultKeys; key->hwId; ++key)
+		action->addDefaultInputMapping(key->hwId);
+	action->addDefaultInputMapping("JOY_X");
+	intro->addAction(action);
+	Keymap *map = new Keymap(Keymap::kKeymapTypeGame, "cblood-map", _("Galaxy map"));
+	map->setEnabled(false);
+	const char *ids[] = {kStandardActionMoveUp, kStandardActionMoveDown, kStandardActionMoveLeft, kStandardActionMoveRight};
+	const char *labels[] = {_s("Move up"), _s("Move down"), _s("Move left"), _s("Move right")};
+	const char *keys[] = {"UP", "DOWN", "LEFT", "RIGHT"};
+	for (uint i = 0; i < 4; ++i) {
+		action = new Action(ids[i], _(labels[i]));
+		action->setCustomEngineActionEvent(CBlood::kMapUp + i);
+		action->addDefaultInputMapping(keys[i]);
+		map->addAction(action);
+	}
+	KeymapArray maps = Keymap::arrayOf(mouse);
+	maps.push_back(intro);
+	maps.push_back(map);
+	return maps;
+}
 
 #if PLUGIN_ENABLED_DYNAMIC(CBLOOD)
 REGISTER_PLUGIN_DYNAMIC(CBLOOD, PLUGIN_TYPE_ENGINE, CBloodMetaEngine);

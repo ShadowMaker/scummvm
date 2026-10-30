@@ -28,6 +28,7 @@
 #include "cblood/cockpit_screen.h"
 #include "cblood/planet_screen.h"
 #include "cblood/startup_screen.h"
+#include "cblood/galaxy_map_screen.h"
 class OSystem;
 namespace Common { class EventManager; }
 namespace CBlood {
@@ -50,6 +51,10 @@ public:
 	void publishPlanet() { _pending = kPlanet; }
 	void showRing(bool planetEntry);
 	void showPlanet();
+	void requestMap() { _nextScreen = &_map; }
+	void requestMapPlanet() { _planet.enterFromMap(); _nextScreen = &_planet; }
+	bool hasPendingDraw() const { return _pending != kNoJob; }
+	void drawHandFrame();
 	void requestCockpit() { _nextScreen = &_cockpit; }
 	bool serviceLoading() override;
 	bool shouldQuit() const;
@@ -58,6 +63,7 @@ public:
 	void delay(uint32 milliseconds);
 	void lockMouse(bool lock);
 	void purgeKeys();
+	void enableKeymap(const char *id, bool enabled);
 private:
 	void activate(Screen &screen);
 	void tickFrame();
@@ -68,6 +74,7 @@ private:
 	CockpitPanel _panel;
 	CockpitScreen _cockpit;
 	PlanetScreen _planet;
+	GalaxyMapScreen _map;
 	StartupScreen _startup;
 	Screen *_active, *_nextScreen;
 	bool _clockActive;

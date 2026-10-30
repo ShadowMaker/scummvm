@@ -28,7 +28,7 @@ class Resources;
 class Renderer;
 class CockpitPanel;
 class Sound;
-enum DrawJob { kNoJob, kCover, kReveal, kBackup, kRestore, kFlags, kOorxx, kDigits, kPlanet };
+enum DrawJob { kNoJob, kCover, kReveal, kBackup, kRestore, kFlags, kOorxx, kDigits, kPlanet, kMap };
 class Screen {
 public:
 	Screen(ScreenController &host, GameState &state, Resources &resources,

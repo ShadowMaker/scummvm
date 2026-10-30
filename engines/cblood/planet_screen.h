@@ -30,6 +30,7 @@ public:
 		Renderer &renderer, CockpitPanel &panel, Sound &sound);
 	void initData();
 	void setPlanet(uint16 coordinate);
+	void enterFromMap() { _fromMap = true; }
 	bool open() override;
 	void close() override;
 	void handleInput() override;
@@ -37,6 +38,7 @@ public:
 	void update(uint32 now) override;
 	void render() override;
 private:
+	bool _fromMap = false;
 	void runDestruction();
 	void advancePalette();
 	void waitDestruct(uint32 start, uint32 cycles);
