@@ -58,6 +58,10 @@ private:
 	OSystem *_system;
 	byte _borderRows[200];
 	byte _borderPixels[kOutputWidth * kAspectHeight];
+	byte _rgbPalette[256 * 3] = {};
+	uint16 _rgbPixels[kOutputWidth * kAspectHeight];
+	void publishPalette(const byte *rgb, uint start, uint count);
+	void presentBorder();
 };
 } // namespace CBlood
 #endif

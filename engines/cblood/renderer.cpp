@@ -53,16 +53,38 @@ void Renderer::present() {
 			if (sourceY >= 0 && sourceY < 200)
 				memcpy(row + kBorderX, pixels + sourceY * 320, 320);
 		}
-#ifdef USE_ASPECT
-		if (stretchBorder())
-			stretch200To240Nearest(output, kOutputWidth, kOutputWidth, kOutputHeight,
-				0, 0, 0, Graphics::PixelFormat::createFormatCLUT8());
-#endif
-		_system->copyRectToScreen(output, kOutputWidth, 0, 0, kOutputWidth, outputHeight());
+		presentBorder();
 	} else {
 		_system->copyRectToScreen(pixels, 320, 0, 0, 320, 200);
 	}
 	_system->updateScreen();
+}
+
+void Renderer::publishPalette(const byte *rgb, uint start, uint count) {
+	memcpy(_rgbPalette + start * 3, rgb, count * 3);
+	if (_system->getScreenFormat().bytesPerPixel == 1)
+		_system->getPaletteManager()->setPalette(rgb, start, count);
+}
+
+void Renderer::presentBorder() {
+	const Graphics::PixelFormat format = _system->getScreenFormat();
+	byte *output = _borderPixels;
+	int pitch = kOutputWidth;
+	if (format.bytesPerPixel == 2) {
+		uint16 colors[256];
+		for (uint i = 0; i < 256; ++i)
+			colors[i] = format.RGBToColor(_rgbPalette[i * 3], _rgbPalette[i * 3 + 1], _rgbPalette[i * 3 + 2]);
+		for (uint i = 0; i < kOutputWidth * kOutputHeight; ++i)
+			_rgbPixels[i] = colors[_borderPixels[i]];
+		output = reinterpret_cast<byte *>(_rgbPixels);
+		pitch *= 2;
+	}
+#ifdef USE_ASPECT
+	if (stretchBorder())
+		stretch200To240(output, pitch, kOutputWidth, kOutputHeight, 0, 0, 0,
+			_system->getFeatureState(OSystem::kFeatureFilteringMode), format);
+#endif
+	_system->copyRectToScreen(output, pitch, 0, 0, kOutputWidth, outputHeight());
 }
 
 void Renderer::clearRasterPalette() {
@@ -93,7 +115,7 @@ void Renderer::presentRaster(byte *pixels) {
 		_borderRows[row] = mapping[0];
 		for (int x = 0; x < 320; ++x) pixels[row * 320 + x] = mapping[pixels[row * 320 + x]];
 	}
-	_system->getPaletteManager()->setPalette(rgb, 0, count);
+	publishPalette(rgb, 0, count);
 }
 
 void Renderer::setPalette(const uint16 *colors) {
@@ -105,7 +127,7 @@ void Renderer::setPalette(const uint16 *colors) {
 		rgb[i * 3 + 1] = levels[(colors[i] >> 4) & 7];
 		rgb[i * 3 + 2] = levels[colors[i] & 7];
 	}
-	_system->getPaletteManager()->setPalette(rgb, 0, 16);
+	publishPalette(rgb, 0, 16);
 }
 
 void Renderer::decodeScreen(const byte *src, byte *dst) const {
@@ -128,7 +150,7 @@ void Renderer::setPlanetPalette(const byte *colors) {
 		rgb[i * 3 + 1] = levels[(color >> 4) & 7];
 		rgb[i * 3 + 2] = levels[color & 7];
 	}
-	_system->getPaletteManager()->setPalette(rgb, 16, 16);
+	publishPalette(rgb, 16, 16);
 }
 
 } // namespace CBlood

@@ -21,6 +21,7 @@
 #include "cblood/cblood.h"
 #include "cblood/screen_controller.h"
 #include "engines/util.h"
+#include "graphics/pixelformat.h"
 #include "common/config-manager.h"
 namespace CBlood {
 CBloodEngine::CBloodEngine(OSystem *syst, const ADGameDescription *desc)
@@ -36,8 +37,16 @@ Common::Error CBloodEngine::run() {
 	ConfMan.registerDefault("show_border", true);
 	_renderer.showBorder = ConfMan.getBool("show_border");
 	_renderer.correctAspect = ConfMan.getBool("aspect_ratio");
+	Common::List<Graphics::PixelFormat> formats;
+#ifdef USE_RGB_COLOR
+	if (_renderer.stretchBorder() && ConfMan.getBool("filtering")) {
+		formats.push_back(Graphics::PixelFormat(2, 5, 6, 5, 0, 11, 5, 0, 0));
+		formats.push_back(Graphics::PixelFormat(2, 5, 5, 5, 0, 10, 5, 0, 0));
+	}
+#endif
+	if (formats.empty()) formats.push_back(Graphics::PixelFormat::createFormatCLUT8());
 	initGraphics(_renderer.showBorder ? Renderer::kOutputWidth : 320,
-	             _renderer.outputHeight());
+	             _renderer.outputHeight(), formats);
 	if (!_screens->runStartup())
 		return shouldQuit() ? Common::kNoError : Common::kReadingFailed;
 	while (!shouldQuit()) {
